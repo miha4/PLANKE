@@ -1,29 +1,57 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Trash2, Upload, Monitor, Clock, CalendarDays, Image, Film } from 'lucide-react';
+import {
+  Play, Trash2, Upload, Monitor, Clock, CalendarDays, Image, Film,
+  Server, ImageOff, Settings,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
 import {
   ContentItem,
-  getContentItems,
+  getAllContentItems,
   addContentItem,
   removeContentItem,
   updateContentItem,
   fileToDataUrl,
+  getDefaultImage,
+  setDefaultImage,
+  removeDefaultImage,
+  getFtpConfig,
+  saveFtpConfig,
+  FtpConfig,
 } from '@/lib/content-store';
 import { toast } from 'sonner';
 
+function toDateInputValue(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function formatDateSl(iso: string): string {
+  return new Date(iso).toLocaleDateString('sl-SI');
+}
+
 const Dashboard = () => {
-  const [items, setItems] = useState<ContentItem[]>(getContentItems);
-  const [durationDays, setDurationDays] = useState(7);
+  const [items, setItems] = useState<ContentItem[]>(getAllContentItems);
   const [displaySeconds, setDisplaySeconds] = useState(10);
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  });
   const [dragOver, setDragOver] = useState(false);
+  const [defaultImg, setDefaultImg] = useState<string | null>(getDefaultImage);
+  const [ftpConfig, setFtpConfigState] = useState<FtpConfig>(getFtpConfig);
+  const [showFtp, setShowFtp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const refresh = () => setItems(getContentItems());
+  const refresh = () => setItems(getAllContentItems());
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
@@ -36,14 +64,13 @@ const Dashboard = () => {
       }
       try {
         const dataUrl = await fileToDataUrl(file);
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + durationDays);
         addContentItem({
           name: file.name,
           type: isImage ? 'image' : 'video',
           dataUrl,
           displayDurationSeconds: isImage ? displaySeconds : 0,
-          expiresAt: expiresAt.toISOString(),
+          startDate: new Date(startDate).toISOString(),
+          endDate: new Date(endDate + 'T23:59:59').toISOString(),
         });
         toast.success(`Dodano: ${file.name}`);
       } catch {
@@ -51,7 +78,7 @@ const Dashboard = () => {
       }
     }
     refresh();
-  }, [durationDays, displaySeconds]);
+  }, [startDate, endDate, displaySeconds]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -65,10 +92,37 @@ const Dashboard = () => {
     toast.success(`Odstranjeno: ${name}`);
   };
 
-  const handleUpdateSeconds = (id: string, seconds: number) => {
-    updateContentItem(id, { displayDurationSeconds: seconds });
+  const handleUpdate = (id: string, updates: Partial<ContentItem>) => {
+    updateContentItem(id, updates);
     refresh();
   };
+
+  const handleDefaultImage = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!file.type.startsWith('image/')) {
+      toast.error('Samo slike so dovoljene za privzeto sliko');
+      return;
+    }
+    const dataUrl = await fileToDataUrl(file);
+    setDefaultImage(dataUrl);
+    setDefaultImg(dataUrl);
+    toast.success('Privzeta slika nastavljena');
+  };
+
+  const handleRemoveDefault = () => {
+    removeDefaultImage();
+    setDefaultImg(null);
+    toast.success('Privzeta slika odstranjena');
+  };
+
+  const handleSaveFtp = () => {
+    saveFtpConfig(ftpConfig);
+    toast.success('FTP nastavitve shranjene');
+  };
+
+  const isExpired = (endDate: string) => new Date(endDate) < new Date();
+  const isNotStarted = (startDate: string) => new Date(startDate) > new Date();
 
   return (
     <div className="min-h-screen bg-background p-6 md:p-10">
@@ -79,13 +133,136 @@ const Dashboard = () => {
             <h1 className="text-3xl font-bold tracking-tight">Nadzorna plošča</h1>
             <p className="mt-1 text-muted-foreground">Upravljajte vsebino predvajalnika oglasov</p>
           </div>
-          <Button onClick={() => navigate('/player')} size="lg" className="gap-2">
-            <Monitor className="h-4 w-4" />
-            Predvajaj
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowFtp(!showFtp)} className="gap-2">
+              <Server className="h-4 w-4" />
+              FTP
+            </Button>
+            <Button onClick={() => navigate('/player')} size="lg" className="gap-2">
+              <Monitor className="h-4 w-4" />
+              Predvajaj
+            </Button>
+          </div>
         </div>
 
-        {/* Settings */}
+        {/* FTP Settings */}
+        {showFtp && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Server className="h-5 w-5 text-primary" />
+                FTP strežnik
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Nastavite FTP povezavo za sinhronizacijo vsebin. V Electron okolju se bo vsebina nalagala neposredno s strežnika.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Gostitelj (host)</Label>
+                  <Input
+                    value={ftpConfig.host}
+                    onChange={e => setFtpConfigState({ ...ftpConfig, host: e.target.value })}
+                    placeholder="ftp.example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vrata (port)</Label>
+                  <Input
+                    type="number"
+                    value={ftpConfig.port}
+                    onChange={e => setFtpConfigState({ ...ftpConfig, port: parseInt(e.target.value) || 21 })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Uporabniško ime</Label>
+                  <Input
+                    value={ftpConfig.username}
+                    onChange={e => setFtpConfigState({ ...ftpConfig, username: e.target.value })}
+                    placeholder="user"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Geslo</Label>
+                  <Input
+                    type="password"
+                    value={ftpConfig.password}
+                    onChange={e => setFtpConfigState({ ...ftpConfig, password: e.target.value })}
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Oddaljena pot</Label>
+                  <Input
+                    value={ftpConfig.remotePath}
+                    onChange={e => setFtpConfigState({ ...ftpConfig, remotePath: e.target.value })}
+                    placeholder="/ads"
+                  />
+                </div>
+                <div className="flex items-end gap-3 pb-0.5">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={ftpConfig.enabled}
+                      onCheckedChange={checked => setFtpConfigState({ ...ftpConfig, enabled: checked })}
+                    />
+                    <Label>Omogočeno</Label>
+                  </div>
+                </div>
+              </div>
+              <Button onClick={handleSaveFtp} className="gap-2">
+                <Settings className="h-4 w-4" />
+                Shrani nastavitve
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Default Image */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Image className="h-5 w-5 text-primary" />
+              Privzeta slika
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Ta slika se prikaže, ko ni nobene aktivne vsebine za predvajanje.
+            </p>
+            <div className="flex items-center gap-4">
+              {defaultImg ? (
+                <>
+                  <div className="h-20 w-32 overflow-hidden rounded-lg border bg-muted">
+                    <img src={defaultImg} alt="Privzeta slika" className="h-full w-full object-cover" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => defaultImgInputRef.current?.click()}>
+                      Zamenjaj
+                    </Button>
+                    <Button variant="destructive" size="icon" onClick={handleRemoveDefault}>
+                      <ImageOff className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <Button variant="outline" onClick={() => defaultImgInputRef.current?.click()} className="gap-2">
+                  <Upload className="h-4 w-4" />
+                  Naloži privzeto sliko
+                </Button>
+              )}
+              <input
+                ref={defaultImgInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => handleDefaultImage(e.target.files)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Settings for new uploads */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -95,27 +272,35 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent className="flex flex-wrap gap-6">
             <div className="space-y-2">
-              <Label htmlFor="days" className="flex items-center gap-1.5">
+              <Label className="flex items-center gap-1.5">
                 <CalendarDays className="h-3.5 w-3.5" />
-                Trajanje (dni)
+                Začetni datum
               </Label>
               <Input
-                id="days"
-                type="number"
-                min={1}
-                max={365}
-                value={durationDays}
-                onChange={e => setDurationDays(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-28"
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="w-44"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="seconds" className="flex items-center gap-1.5">
+              <Label className="flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Končni datum
+              </Label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="w-44"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
                 Prikaz slike (sekunde)
               </Label>
               <Input
-                id="seconds"
                 type="number"
                 min={1}
                 max={120}
@@ -152,9 +337,7 @@ const Dashboard = () => {
 
         {/* Content list */}
         <div className="space-y-3">
-          <h2 className="text-xl font-bold">
-            Vsebine ({items.length})
-          </h2>
+          <h2 className="text-xl font-bold">Vsebine ({items.length})</h2>
           {items.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -164,65 +347,92 @@ const Dashboard = () => {
             </Card>
           ) : (
             <div className="grid gap-3">
-              {items.map(item => (
-                <Card key={item.id} className="overflow-hidden">
-                  <div className="flex items-center gap-4 p-4">
-                    {/* Thumbnail */}
-                    <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-md bg-muted">
-                      {item.type === 'image' ? (
-                        <img src={item.dataUrl} alt={item.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <Film className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate font-medium">{item.name}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          {item.type === 'image' ? <Image className="h-3 w-3" /> : <Film className="h-3 w-3" />}
-                          {item.type === 'image' ? 'Slika' : 'Video'}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <CalendarDays className="h-3 w-3" />
-                          do {new Date(item.expiresAt).toLocaleDateString('sl-SI')}
-                        </span>
-                        {item.type === 'image' && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {item.displayDurationSeconds}s
-                          </span>
+              {items.map(item => {
+                const expired = isExpired(item.endDate);
+                const notStarted = isNotStarted(item.startDate);
+                return (
+                  <Card key={item.id} className={`overflow-hidden ${expired ? 'opacity-50' : ''}`}>
+                    <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+                      {/* Thumbnail */}
+                      <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-md bg-muted">
+                        {item.type === 'image' ? (
+                          <img src={item.dataUrl} alt={item.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <Film className="h-6 w-6 text-muted-foreground" />
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2">
-                      {item.type === 'image' && (
-                        <Input
-                          type="number"
-                          min={1}
-                          max={120}
-                          value={item.displayDurationSeconds}
-                          onChange={e => handleUpdateSeconds(item.id, Math.max(1, parseInt(e.target.value) || 10))}
-                          className="w-20 text-center"
-                          title="Trajanje prikaza (sekunde)"
-                        />
-                      )}
+                      {/* Info & individual controls */}
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-medium">{item.name}</p>
+                          {expired && (
+                            <span className="shrink-0 rounded bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                              Poteklo
+                            </span>
+                          )}
+                          {notStarted && !expired && (
+                            <span className="shrink-0 rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              Načrtovano
+                            </span>
+                          )}
+                          {!expired && !notStarted && (
+                            <span className="shrink-0 rounded bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600">
+                              Aktivno
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <div className="flex items-center gap-1.5">
+                            <Label className="text-xs text-muted-foreground">Od:</Label>
+                            <Input
+                              type="date"
+                              value={toDateInputValue(item.startDate)}
+                              onChange={e => handleUpdate(item.id, { startDate: new Date(e.target.value).toISOString() })}
+                              className="h-8 w-36 text-xs"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Label className="text-xs text-muted-foreground">Do:</Label>
+                            <Input
+                              type="date"
+                              value={toDateInputValue(item.endDate)}
+                              onChange={e => handleUpdate(item.id, { endDate: new Date(e.target.value + 'T23:59:59').toISOString() })}
+                              className="h-8 w-36 text-xs"
+                            />
+                          </div>
+                          {item.type === 'image' && (
+                            <div className="flex items-center gap-1.5">
+                              <Label className="text-xs text-muted-foreground">Sekunde:</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={120}
+                                value={item.displayDurationSeconds}
+                                onChange={e => handleUpdate(item.id, { displayDurationSeconds: Math.max(1, parseInt(e.target.value) || 10) })}
+                                className="h-8 w-20 text-xs text-center"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Delete */}
                       <Button
                         variant="destructive"
                         size="icon"
                         onClick={() => handleDelete(item.id, item.name)}
+                        className="self-start sm:self-center"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
