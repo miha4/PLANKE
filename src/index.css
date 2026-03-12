@@ -91,3 +91,9 @@
     color: hsl(var(--player-foreground));
   }
 }
+
+@keyframes progress-bar {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+}
