@@ -379,7 +379,7 @@ const Dashboard = () => {
                             </span>
                           )}
                           {!expired && !notStarted && (
-                            <span className="shrink-0 rounded bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600">
+                            <span className="shrink-0 rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-accent-foreground">
                               Aktivno
                             </span>
                           )}
