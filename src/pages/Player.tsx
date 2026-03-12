@@ -1,25 +1,49 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getContentItems, ContentItem } from '@/lib/content-store';
+import { getActiveContentItems, getDefaultImage, ContentItem } from '@/lib/content-store';
 import { ArrowLeft } from 'lucide-react';
 
 const Player = () => {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showControls, setShowControls] = useState(false);
+  const [defaultImage, setDefaultImageState] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const navigate = useNavigate();
 
-  // Load content
+  // Load content and request fullscreen
   useEffect(() => {
-    const loadedItems = getContentItems();
+    const loadedItems = getActiveContentItems();
     setItems(loadedItems);
+    setDefaultImageState(getDefaultImage());
     if (loadedItems.length === 0) setCurrentIndex(-1);
+
+    // Request fullscreen
+    const el = containerRef.current ?? document.documentElement;
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    }
+
+    // Periodically refresh active items (every 60s)
+    const interval = setInterval(() => {
+      const fresh = getActiveContentItems();
+      setItems(fresh);
+      if (fresh.length === 0) setCurrentIndex(-1);
+    }, 60000);
+
+    return () => {
+      clearInterval(interval);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
   }, []);
 
-  const currentItem = items[currentIndex] ?? null;
+  const currentItem = items.length > 0 ? items[currentIndex % items.length] ?? null : null;
+  const showDefault = items.length === 0 && defaultImage;
 
   // Advance to next
   const goNext = useCallback(() => {
@@ -53,12 +77,51 @@ const Player = () => {
     controlsTimerRef.current = setTimeout(() => setShowControls(false), 2000);
   };
 
-  if (items.length === 0) {
+  // Show default image when no active content
+  if (showDefault) {
     return (
-      <div className="player-screen flex min-h-screen flex-col items-center justify-center gap-4">
+      <div
+        ref={containerRef}
+        className="player-screen relative h-screen w-screen overflow-hidden"
+        onMouseMove={handleMouseMove}
+        style={{ cursor: showControls ? 'default' : 'none' }}
+      >
+        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-contain" />
+        {/* Controls overlay */}
+        <div
+          className={`absolute inset-0 transition-opacity duration-300 ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4">
+            <button
+              onClick={() => {
+                if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+                navigate('/');
+              }}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Nadzorna plošča
+            </button>
+          </div>
+          <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
+            Privzeta slika
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0 && !defaultImage) {
+    return (
+      <div ref={containerRef} className="player-screen flex min-h-screen flex-col items-center justify-center gap-4">
         <p className="text-xl font-mono text-player-foreground opacity-60">Ni vsebin za predvajanje</p>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+            navigate('/');
+          }}
           className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
         >
           Nazaj na nadzorno ploščo
@@ -69,7 +132,8 @@ const Player = () => {
 
   return (
     <div
-      className="player-screen relative h-screen w-screen overflow-hidden cursor-none"
+      ref={containerRef}
+      className="player-screen relative h-screen w-screen overflow-hidden"
       onMouseMove={handleMouseMove}
       style={{ cursor: showControls ? 'default' : 'none' }}
     >
@@ -112,7 +176,10 @@ const Player = () => {
       >
         <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => {
+              if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+              navigate('/');
+            }}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
