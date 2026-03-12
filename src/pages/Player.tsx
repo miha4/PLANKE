@@ -1,0 +1,130 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getContentItems, ContentItem } from '@/lib/content-store';
+import { ArrowLeft } from 'lucide-react';
+
+const Player = () => {
+  const [items, setItems] = useState<ContentItem[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showControls, setShowControls] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const controlsTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const navigate = useNavigate();
+
+  // Load content
+  useEffect(() => {
+    const loadedItems = getContentItems();
+    setItems(loadedItems);
+    if (loadedItems.length === 0) setCurrentIndex(-1);
+  }, []);
+
+  const currentItem = items[currentIndex] ?? null;
+
+  // Advance to next
+  const goNext = useCallback(() => {
+    if (items.length === 0) return;
+    setCurrentIndex(prev => (prev + 1) % items.length);
+  }, [items.length]);
+
+  // Timer for images
+  useEffect(() => {
+    if (!currentItem || currentItem.type !== 'image') return;
+    timerRef.current = setTimeout(goNext, currentItem.displayDurationSeconds * 1000);
+    return () => clearTimeout(timerRef.current);
+  }, [currentItem, currentIndex, goNext]);
+
+  // Video ended handler
+  const handleVideoEnded = useCallback(() => {
+    goNext();
+  }, [goNext]);
+
+  // Autoplay video
+  useEffect(() => {
+    if (currentItem?.type === 'video' && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [currentItem, currentIndex]);
+
+  // Show controls on mouse move
+  const handleMouseMove = () => {
+    setShowControls(true);
+    clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = setTimeout(() => setShowControls(false), 2000);
+  };
+
+  if (items.length === 0) {
+    return (
+      <div className="player-screen flex min-h-screen flex-col items-center justify-center gap-4">
+        <p className="text-xl font-mono text-player-foreground opacity-60">Ni vsebin za predvajanje</p>
+        <button
+          onClick={() => navigate('/')}
+          className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
+        >
+          Nazaj na nadzorno ploščo
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="player-screen relative h-screen w-screen overflow-hidden cursor-none"
+      onMouseMove={handleMouseMove}
+      style={{ cursor: showControls ? 'default' : 'none' }}
+    >
+      {/* Content */}
+      {currentItem?.type === 'image' ? (
+        <img
+          key={currentItem.id + currentIndex}
+          src={currentItem.dataUrl}
+          alt={currentItem.name}
+          className="h-full w-full object-contain animate-fade-in"
+        />
+      ) : currentItem?.type === 'video' ? (
+        <video
+          key={currentItem.id + currentIndex}
+          ref={videoRef}
+          src={currentItem.dataUrl}
+          className="h-full w-full object-contain"
+          muted
+          onEnded={handleVideoEnded}
+        />
+      ) : null}
+
+      {/* Progress bar */}
+      {currentItem?.type === 'image' && (
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-foreground/10">
+          <div
+            className="h-full bg-primary transition-none"
+            style={{
+              animation: `progress-bar ${currentItem.displayDurationSeconds}s linear forwards`,
+            }}
+          />
+        </div>
+      )}
+
+      {/* Controls overlay */}
+      <div
+        className={`absolute inset-0 transition-opacity duration-300 ${
+          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4">
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Nadzorna plošča
+          </button>
+        </div>
+        <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
+          {currentIndex + 1} / {items.length}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Player;
