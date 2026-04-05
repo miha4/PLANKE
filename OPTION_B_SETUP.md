@@ -11,6 +11,8 @@ Ta projekt je nastavljen za dva načina delovanja z **eno kodo**:
 npm install
 ```
 
+> Skripte ne potrebujejo globalnega `concurrently`/`wait-on`/`cross-env`.
+
 ## 2) Zagon glavnega računalnika (Control)
 
 To zažene:
