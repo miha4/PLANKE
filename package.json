@@ -3,14 +3,20 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "dev:backend": "node backend-control-server.mjs",
+    "dev:control": "concurrently -k \"npm:dev:backend\" \"npm:dev\"",
+    "dev:electron:control": "concurrently -k \"npm:dev:backend\" \"npm:dev\" \"wait-on http://127.0.0.1:5173 && cross-env APP_MODE=control CONTROL_URL=http://127.0.0.1:8787 VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "dev:electron:player": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:5173 && cross-env APP_MODE=player CONTROL_URL=http://127.0.0.1:8787 DEVICE_ID=player-01 VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "electron": "electron ."
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -74,6 +80,9 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^36.2.1",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
@@ -85,6 +94,7 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.5"
   }
 }
