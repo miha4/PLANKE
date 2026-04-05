@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getActiveContentItems, getDefaultImage, ContentItem } from '@/lib/content-store';
+import { ContentItem } from '@/lib/content-store';
+import { getActiveContentItemsAsync, getDefaultImageAsync } from '@/lib/content-service';
 import { ArrowLeft } from 'lucide-react';
 
 const Player = () => {
@@ -16,10 +17,12 @@ const Player = () => {
 
   // Load content and request fullscreen
   useEffect(() => {
-    const loadedItems = getActiveContentItems();
-    setItems(loadedItems);
-    setDefaultImageState(getDefaultImage());
-    if (loadedItems.length === 0) setCurrentIndex(-1);
+    (async () => {
+      const loadedItems = await getActiveContentItemsAsync();
+      setItems(loadedItems);
+      setDefaultImageState(await getDefaultImageAsync());
+      if (loadedItems.length === 0) setCurrentIndex(-1);
+    })();
 
     // Request fullscreen
     const el = containerRef.current ?? document.documentElement;
@@ -29,9 +32,10 @@ const Player = () => {
 
     // Periodically refresh active items (every 60s)
     const interval = setInterval(() => {
-      const fresh = getActiveContentItems();
-      setItems(fresh);
-      if (fresh.length === 0) setCurrentIndex(-1);
+      getActiveContentItemsAsync().then(fresh => {
+        setItems(fresh);
+        if (fresh.length === 0) setCurrentIndex(-1);
+      });
     }, 60000);
 
     return () => {

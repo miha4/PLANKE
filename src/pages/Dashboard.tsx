@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Play, Trash2, Upload, Monitor, Clock, CalendarDays, Image, Film,
@@ -12,18 +12,20 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
   ContentItem,
-  getAllContentItems,
-  addContentItem,
-  removeContentItem,
-  updateContentItem,
   fileToDataUrl,
-  getDefaultImage,
-  setDefaultImage,
-  removeDefaultImage,
-  getFtpConfig,
-  saveFtpConfig,
   FtpConfig,
 } from '@/lib/content-store';
+import {
+  getAllContentItemsAsync,
+  addContentItemAsync,
+  removeContentItemAsync,
+  updateContentItemAsync,
+  getDefaultImageAsync,
+  setDefaultImageAsync,
+  removeDefaultImageAsync,
+  getFtpConfigAsync,
+  saveFtpConfigAsync,
+} from '@/lib/content-service';
 import { toast } from 'sonner';
 
 function toDateInputValue(iso: string): string {
@@ -35,7 +37,7 @@ function formatDateSl(iso: string): string {
 }
 
 const Dashboard = () => {
-  const [items, setItems] = useState<ContentItem[]>(getAllContentItems);
+  const [items, setItems] = useState<ContentItem[]>([]);
   const [displaySeconds, setDisplaySeconds] = useState(10);
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(() => {
@@ -44,14 +46,22 @@ const Dashboard = () => {
     return d.toISOString().slice(0, 10);
   });
   const [dragOver, setDragOver] = useState(false);
-  const [defaultImg, setDefaultImg] = useState<string | null>(getDefaultImage);
-  const [ftpConfig, setFtpConfigState] = useState<FtpConfig>(getFtpConfig);
+  const [defaultImg, setDefaultImg] = useState<string | null>(null);
+  const [ftpConfig, setFtpConfigState] = useState<FtpConfig>({ host: '', port: 21, username: '', password: '', remotePath: '/ads', enabled: false });
   const [showFtp, setShowFtp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const refresh = () => setItems(getAllContentItems());
+  const refresh = async () => setItems(await getAllContentItemsAsync());
+
+  useEffect(() => {
+    (async () => {
+      await refresh();
+      setDefaultImg(await getDefaultImageAsync());
+      setFtpConfigState(await getFtpConfigAsync());
+    })();
+  }, []);
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
@@ -64,7 +74,7 @@ const Dashboard = () => {
       }
       try {
         const dataUrl = await fileToDataUrl(file);
-        addContentItem({
+        await addContentItemAsync({
           name: file.name,
           type: isImage ? 'image' : 'video',
           dataUrl,
@@ -77,7 +87,7 @@ const Dashboard = () => {
         toast.error(`Napaka pri nalaganju: ${file.name}`);
       }
     }
-    refresh();
+    await refresh();
   }, [startDate, endDate, displaySeconds]);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -87,14 +97,12 @@ const Dashboard = () => {
   };
 
   const handleDelete = (id: string, name: string) => {
-    removeContentItem(id);
-    refresh();
+    removeContentItemAsync(id).then(refresh);
     toast.success(`Odstranjeno: ${name}`);
   };
 
   const handleUpdate = (id: string, updates: Partial<ContentItem>) => {
-    updateContentItem(id, updates);
-    refresh();
+    updateContentItemAsync(id, updates).then(refresh);
   };
 
   const handleDefaultImage = async (files: FileList | null) => {
@@ -105,19 +113,19 @@ const Dashboard = () => {
       return;
     }
     const dataUrl = await fileToDataUrl(file);
-    setDefaultImage(dataUrl);
+    await setDefaultImageAsync(dataUrl);
     setDefaultImg(dataUrl);
     toast.success('Privzeta slika nastavljena');
   };
 
   const handleRemoveDefault = () => {
-    removeDefaultImage();
+    removeDefaultImageAsync();
     setDefaultImg(null);
     toast.success('Privzeta slika odstranjena');
   };
 
   const handleSaveFtp = () => {
-    saveFtpConfig(ftpConfig);
+    saveFtpConfigAsync(ftpConfig);
     toast.success('FTP nastavitve shranjene');
   };
 
