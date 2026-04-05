@@ -71,3 +71,12 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Electron Option B (control + player)
+
+This repository also includes a unified Electron setup:
+
+- Control mode for the main computer (dashboard + local backend + SQLite).
+- Player mode for client computers (fullscreen player connected to control node).
+
+See full setup guide: `OPTION_B_SETUP.md`.
