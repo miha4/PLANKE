@@ -19,11 +19,17 @@ To zažene:
 - Electron okno v control načinu
 
 ```bash
-npm run dev:electron:control
+npm run dev:control
 ```
 
 Podatki se shranjujejo v:
 - `./.control-data/control.db` (SQLite)
+
+Če želiš enako z Electron oknom:
+
+```bash
+npm run dev:electron:control
+```
 
 ## 3) Zagon player računalnika
 

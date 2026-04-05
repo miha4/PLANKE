@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 const mode = process.env.APP_MODE || 'control'; // control | player
 const controlUrl = process.env.CONTROL_URL || 'http://localhost:8787';
 const deviceId = process.env.DEVICE_ID || 'player-01';
-const viteDevUrl = process.env.VITE_DEV_SERVER_URL;
+const viteDevUrl = process.env.VITE_DEV_SERVER_URL || process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173';
 
 let backendProcess;
 
@@ -32,7 +32,7 @@ function createWindow() {
     },
   });
 
-  if (viteDevUrl) {
+  if (!app.isPackaged) {
     if (mode === 'control') {
       win.loadURL(`${viteDevUrl}/?apiBase=${encodeURIComponent(controlUrl + '/api')}`);
     } else {
