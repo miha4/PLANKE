@@ -3,14 +3,20 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "dev:backend": "node backend-control-server.mjs",
+    "dev:control": "bash ./scripts/dev-control.sh",
+    "dev:electron:control": "bash ./scripts/dev-electron-control.sh",
+    "dev:electron:player": "bash ./scripts/dev-electron-player.sh",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "electron": "electron ."
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -74,6 +80,7 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
+    "electron": "^36.2.1",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
