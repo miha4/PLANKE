@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONTROL_URL_VALUE="${CONTROL_URL:-http://127.0.0.1:8787}"
+CONTROL_URL_VALUE="${CONTROL_URL:-}"
 DEVICE_ID_VALUE="${DEVICE_ID:-player-01}"
 
 cleanup() {

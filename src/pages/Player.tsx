@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ContentItem } from '@/lib/content-store';
-import { getActiveContentItemsAsync, getDefaultImageAsync } from '@/lib/content-service';
+import { getActiveContentItemsAsync, getDefaultImageAsync, isBackendUnavailableError } from '@/lib/content-service';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Player = () => {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -18,10 +19,18 @@ const Player = () => {
   // Load content and request fullscreen
   useEffect(() => {
     (async () => {
-      const loadedItems = await getActiveContentItemsAsync();
-      setItems(loadedItems);
-      setDefaultImageState(await getDefaultImageAsync());
-      if (loadedItems.length === 0) setCurrentIndex(-1);
+      try {
+        const loadedItems = await getActiveContentItemsAsync();
+        setItems(loadedItems);
+        setDefaultImageState(await getDefaultImageAsync());
+        if (loadedItems.length === 0) setCurrentIndex(-1);
+      } catch (error) {
+        if (isBackendUnavailableError(error)) {
+          toast.error('Backend ni dosegljiv. Zaženi backend in preveri, da je port 8787 forwardan (Codespaces).');
+        }
+        setItems([]);
+        setCurrentIndex(-1);
+      }
     })();
 
     // Request fullscreen
@@ -32,10 +41,15 @@ const Player = () => {
 
     // Periodically refresh active items (every 60s)
     const interval = setInterval(() => {
-      getActiveContentItemsAsync().then(fresh => {
-        setItems(fresh);
-        if (fresh.length === 0) setCurrentIndex(-1);
-      });
+      getActiveContentItemsAsync()
+        .then(fresh => {
+          setItems(fresh);
+          if (fresh.length === 0) setCurrentIndex(-1);
+        })
+        .catch(() => {
+          setItems([]);
+          setCurrentIndex(-1);
+        });
     }, 60000);
 
     return () => {
