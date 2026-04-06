@@ -1,17 +1,21 @@
-import express from 'express';
-import cors from 'cors';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { DatabaseSync } from 'node:sqlite';
+// uvozi modulov
+import express from 'express'; // glavni web streznik
+import cors from 'cors'; // dovoli klice iz frontenda na drugem naslovu/portu
+import { mkdirSync, writeFileSync } from 'node:fs'; // ustvarjanje map in zapis datotek
+import { dirname, join } from 'node:path'; // delo s potmi do map/datotek
+import { fileURLToPath } from 'node:url'; // pretvori import.meta.url v pravo datotecno pot
+import { DatabaseSync } from 'node:sqlite'; // SQLite baza
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const dataDir = join(__dirname, '.control-data');
-const mediaDir = join(dataDir, 'media');
-mkdirSync(dataDir, { recursive: true });
+const __filename = fileURLToPath(import.meta.url); // polna pot do .js datoteke
+const __dirname = dirname(__filename); // mapa, kjer ta datoteka je
+const dataDir = join(__dirname, '.control-data'); // mapa za podatke
+const mediaDir = join(dataDir, 'media'); // fizične slike in videi
+mkdirSync(dataDir, { recursive: true }); // ce mape ne obstajajo, jih ustvari
 mkdirSync(mediaDir, { recursive: true });
 
+//ustvarimo SQLite bazo, ki vsebuje podatke od slik/videjev. Definiramo 2 tabeli:
+// content_items: glavna tabela za vsebino, settings: tabela s ključi-vrednostmi
+// ne delamo posebne tabele za vsako nastavitev ampak vse hranimo kot key-value, value je JSON niz
 const db = new DatabaseSync(join(dataDir, 'control.db'));
 db.exec(`
 CREATE TABLE IF NOT EXISTS content_items (
@@ -31,22 +35,29 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `);
 
+// ustvarjanje express appa:  
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(cors()); // omogoči, da frontend in backend komunicirata, tudi če sta na različnih URL-jih ali portih
+app.use(express.json({ limit: '50mb' })); // Če frontend pošlje JSON body, ga Express prebere, dovoljeno je do 50mb; ko npr pošiljamo slike kot base64
+// pomembno: vse, kar je v mapi mediaDir, bo javno dostopno pod /media/...
+//Če imaš v mapi datoteko: .control-data/media/test.jpg, bo dostopna na /media/test.jpg
 app.use('/media', express.static(mediaDir, {
-  maxAge: '7d',
-  etag: true,
+  maxAge: '7d', //browser lahko cache-a datoteko 7 dni
+  etag: true, // preverjamo ali se je datoteka spremenila
 }));
 
+// vrne datum/ čas v ISO formatu
+//2026-04-06T10:15:30.123Z
 function nowIso() {
   return new Date().toISOString();
 }
 
+//počisti ime datoteke
 function sanitizeFileName(name = 'file') {
   return String(name).replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
+//normalizira pot do medija
 function toPublicMediaUrl(_req, storedValue) {
   if (!storedValue) return null;
   if (storedValue.startsWith('http://') || storedValue.startsWith('https://') || storedValue.startsWith('data:')) {
@@ -56,12 +67,18 @@ function toPublicMediaUrl(_req, storedValue) {
   return `/media/${storedValue}`;
 }
 
+//razbije base64 data URL na dele
+//data:image/png;base64,iVBORw0KGgoAAA...
+// vrne {
+// mimeType: 'image/png',
+//  base64: 'iVBORw0KGgoAAA...'}
 function parseDataUrl(dataUrl) {
   const match = /^data:(.+?);base64,(.+)$/.exec(String(dataUrl ?? ''));
   if (!match) return null;
   return { mimeType: match[1], base64: match[2] };
 }
 
+// določi končnico
 function extensionFromMime(mimeType) {
   const map = {
     'image/jpeg': 'jpg',
@@ -76,6 +93,9 @@ function extensionFromMime(mimeType) {
   return map[mimeType] || 'bin';
 }
 
+//če frontend pošlje sliko kot data:image/...;base64, jo ta funkcija:
+// razbije, določi pravo končnico, naredi varno ime, shrani binarno datoteko v media mapo,
+// vrne javno pot /media/...
 function saveDataUrlAsMedia(dataUrl, originalName = 'upload') {
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) return dataUrl;
@@ -88,6 +108,12 @@ function saveDataUrlAsMedia(dataUrl, originalName = 'upload') {
   return `/media/${fileName}`;
 }
 
+// podobno kot prejšnja funkcija le da tu dobimo surove binarne podatke
+// to uporabljamo pri /api/upload, ko pošiljamo recimo
+//curl -X POST http://localhost:8787/api/upload \
+//  --data-binary @test.jpg \
+//  -H "Content-Type: image/jpeg"
+//takrat backend ne dobi base 64 pač pa bytes datoteke
 function saveBinaryAsMedia(binary, mimeType = 'application/octet-stream', originalName = 'upload') {
   const ext = extensionFromMime(mimeType);
   const safeName = sanitizeFileName(originalName).replace(/\.[^.]+$/, '');
@@ -97,21 +123,26 @@ function saveBinaryAsMedia(binary, mimeType = 'application/octet-stream', origin
   return `/media/${fileName}`;
 }
 
+// prebere nastavitev iz base; če ključ obstaja vrne JSON.parse(row.value)
 function readSetting(key, fallback = null) {
   const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
   const row = stmt.get(key);
   return row ? JSON.parse(row.value) : fallback;
 }
 
+// zapiše  nastavitev v bazo, če kljul že obstaja, ga posodobi, če ne ga vstavi
 function writeSetting(key, value) {
   db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(key, JSON.stringify(value));
 }
 
+//API ENDPOINTI
+
+//testni endpoint, da preverimo delovanje backenda
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, at: nowIso() });
 });
-
+// vrne vsebino iz baze sortirano po sort order
 app.get('/api/content', (_req, res) => {
   const rows = db.prepare('SELECT * FROM content_items ORDER BY sort_order ASC').all();
   res.json(rows.map(r => ({
@@ -127,6 +158,7 @@ app.get('/api/content', (_req, res) => {
   })));
 });
 
+//endpoint, ki ga uporablja player: vrne samo aktivne vsebine
 app.get('/api/content/active', (_req, res) => {
   const now = nowIso();
   const rows = db.prepare('SELECT * FROM content_items WHERE start_date <= ? AND end_date > ? ORDER BY sort_order ASC').all(now, now);
@@ -143,6 +175,8 @@ app.get('/api/content/active', (_req, res) => {
   })));
 });
 
+//endpoint ustvari nov content idem: prebere body, ustvari nov ID, zapiše čas kreiranja,
+// ...
 app.post('/api/content', (req, res) => {
   const body = req.body ?? {};
   const id = crypto.randomUUID();
@@ -176,15 +210,18 @@ app.post('/api/content', (req, res) => {
   });
 });
 
+// poišče obstoječi zapis, če ne obstaja: 404
 app.patch('/api/content/:id', (req, res) => {
   const id = req.params.id;
   const row = db.prepare('SELECT * FROM content_items WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'Not found' });
 
+  // posodobitev medija: če pride mediaUrl, uporabi njega, če pride dataUrl, shrani novo datoteko, sicer obdrži staro vrednost
   const nextMedia = req.body.mediaUrl
     ? req.body.mediaUrl
     : (req.body.dataUrl ? saveDataUrlAsMedia(req.body.dataUrl, req.body.name ?? row.name) : row.data_url);
 
+    // združevanje novih in starih vrednosti
   const merged = {
     name: req.body.name ?? row.name,
     type: req.body.type ?? row.type,
@@ -195,6 +232,7 @@ app.patch('/api/content/:id', (req, res) => {
     sort_order: req.body.order ?? row.sort_order,
   };
 
+  //update v bazi
   db.prepare(`UPDATE content_items
     SET name=?, type=?, data_url=?, display_duration_seconds=?, start_date=?, end_date=?, sort_order=?
     WHERE id=?`).run(
@@ -208,24 +246,30 @@ app.patch('/api/content/:id', (req, res) => {
     id,
   );
 
+  //
   res.json({ ok: true });
 });
 
+// izbriše zapis iz baze; ne izbriše fizične datoteke iz media mape, ampak samo referenco iz baze
 app.delete('/api/content/:id', (req, res) => {
   db.prepare('DELETE FROM content_items WHERE id = ?').run(req.params.id);
   res.status(204).end();
 });
 
+// vrne privzeto sliko
 app.get('/api/default-image', (_req, res) => {
   res.json({ dataUrl: toPublicMediaUrl(_req, readSetting('defaultImage', null)) });
 });
 
+// nastavi priveto sliko. Logika je enaka:
+// če dobiš mediaUrl ga shraniš, sicer shraniš dataUrl kot datoteko, potem to zapišeš v settings pod ključ defaultImage
 app.put('/api/default-image', (req, res) => {
   const stored = req.body?.mediaUrl || saveDataUrlAsMedia(req.body?.dataUrl, 'default-image');
   writeSetting('defaultImage', stored ?? null);
   res.json({ ok: true });
 });
 
+//poseben upload endpoint, ki je namenjen uploadu ? 
 app.post('/api/upload', express.raw({ type: ['image/*', 'video/*', 'application/octet-stream'], limit: '200mb' }), (req, res) => {
   const contentType = req.get('content-type') || '';
   const fileName = req.get('x-file-name') || req.query.name || 'upload';
@@ -256,7 +300,18 @@ app.put('/api/ftp-config', (req, res) => {
   res.json({ ok: true });
 });
 
+// zagon strežnika
 const port = Number(process.env.CONTROL_PORT ?? 8787);
 app.listen(port, () => {
   console.log(`Control backend running on http://0.0.0.0:${port}`);
 });
+
+//na kratko:
+//content_items = seznam oglasov/slik/video vsebin
+//settings = splošne nastavitve
+//media static = javni dostop do fizičnih datotek
+//toPublicMediaUrl() = poskrbi, da frontend vedno dobi uporaben URL
+//saveDataUrlAsMedia() = base64 pretvori v pravo datoteko
+//saveBinaryAsMedia() = binary upload shrani kot datoteko
+//api/content/active = glavni endpoint za player
+///api/upload = glavni endpoint za upload datotek
