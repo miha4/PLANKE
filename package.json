@@ -16,7 +16,13 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "electron": "electron ."
+    "electron": "electron .",
+    "build:web": "vite build",
+    "build:electron": "npm run build:web && node scripts/package-electron.mjs",
+    "build:electron:mac": "npm run build:web && node scripts/package-electron.mjs",
+    "build:electron:win": "npm run build:web && node scripts/package-electron.mjs",
+    "build-electron-mac": "npm run build:web && node scripts/package-electron.mjs",
+    "build-electron-win": "npm run build:web && node scripts/package-electron.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
