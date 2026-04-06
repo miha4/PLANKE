@@ -80,3 +80,104 @@ This repository also includes a unified Electron setup:
 - Player mode for client computers (fullscreen player connected to control node).
 
 See full setup guide: `OPTION_B_SETUP.md`.
+
+---
+
+## Enostavna razlaga arhitekture (Vite + React + Express + Electron)
+
+Aplikacija ima 3 glavne dele:
+
+1. **Frontend (React + Vite)**  
+   - Teče na portu **5173**.  
+   - To je uporabniški vmesnik (kar vidiš v browserju).
+
+2. **Backend (Express + SQLite)**  
+   - Teče na portu **8787**.  
+   - To je API (npr. `/api/health`, `/api/content`), ki hrani in vrača podatke.
+   - Če odpreš samo `/` na backend portu, lahko dobiš `Cannot GET /` — to je normalno, ker root route ni definiran.
+
+3. **Electron**  
+   - “Desktop ovitek”, ki odpre frontend kot namizno aplikacijo.
+   - Za GUI potrebuje prikazovalnik (DISPLAY/X server).
+
+### Zakaj Electron v Codespaces/Codex pogosto ne dela?
+
+Codespaces/Codex okolje je običajno **headless** (brez grafičnega zaslona), zato se lahko pojavi napaka:
+
+- `Missing X server`
+- `Missing DISPLAY`
+
+To je pričakovano obnašanje okolja, ne nujno napaka v tvoji aplikaciji.
+
+---
+
+## Priporočen način razvoja (tudi če Electron v Codespaces ne dela)
+
+Da — app lahko normalno razvijaš in testiraš:
+
+- Frontend testiraš v browserju na `5173`.
+- Backend testiraš preko API endpointov na `8787`.
+- Electron “okno” preveriš lokalno na svojem računalniku (kjer imaš GUI).
+
+---
+
+## Hiter “korak-po-korak” pregled (kaj dela in kaj ne)
+
+### 0) Namesti odvisnosti
+
+```sh
+npm install
+```
+
+### 1) Zaženi frontend + backend (brez Electron)
+
+```sh
+npm run dev:control
+```
+
+Ta ukaz zažene:
+- backend (`dev:backend`) in
+- frontend (`dev`).
+
+### 2) Preveri frontend
+
+Odpri port **5173** (v browserju / Ports panelu).  
+Če vidiš UI, frontend dela.
+
+### 3) Preveri backend health endpoint
+
+V terminalu:
+
+```sh
+curl http://127.0.0.1:8787/api/health
+```
+
+Pričakovan odgovor je JSON z `ok: true`.
+
+### 4) Ne testiraj backenda na `/`
+
+Če pokličeš:
+
+```sh
+curl http://127.0.0.1:8787/
+```
+
+`Cannot GET /` je normalno in pričakovano.
+
+### 5) Če želiš vseeno zagnati Electron v Codespaces
+
+```sh
+npm run dev:electron:control
+```
+
+Možno je, da pade z napako DISPLAY/X server (to je pričakovano v headless okolju).
+
+### 6) Electron test (pravi desktop test)
+
+Za končni Electron test odpri projekt lokalno (na svojem računalniku) in zaženi isti ukaz:
+
+```sh
+npm run dev:electron:control
+```
+
+Tam bi se moralo odpreti Electron okno.
