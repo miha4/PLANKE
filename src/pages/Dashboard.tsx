@@ -2,18 +2,14 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Play, Trash2, Upload, Monitor, Clock, CalendarDays, Image, Film,
-  Server, ImageOff, Settings,
+  ImageOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import {
-  ContentItem,
-  FtpConfig,
-} from '@/lib/content-store';
+import { ContentItem } from '@/lib/content-store';
 import {
   getAllContentItemsAsync,
   uploadMediaAsync,
@@ -23,8 +19,6 @@ import {
   getDefaultImageAsync,
   setDefaultImageAsync,
   removeDefaultImageAsync,
-  getFtpConfigAsync,
-  saveFtpConfigAsync,
 } from '@/lib/content-service';
 import { toast } from 'sonner';
 
@@ -47,8 +41,6 @@ const Dashboard = () => {
   });
   const [dragOver, setDragOver] = useState(false);
   const [defaultImg, setDefaultImg] = useState<string | null>(null);
-  const [ftpConfig, setFtpConfigState] = useState<FtpConfig>({ host: '', port: 21, username: '', password: '', remotePath: '/ads', enabled: false });
-  const [showFtp, setShowFtp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -59,7 +51,6 @@ const Dashboard = () => {
     (async () => {
       await refresh();
       setDefaultImg(await getDefaultImageAsync());
-      setFtpConfigState(await getFtpConfigAsync());
     })();
   }, []);
 
@@ -124,12 +115,6 @@ const Dashboard = () => {
     toast.success('Privzeta slika odstranjena');
   };
 
-  const handleSaveFtp = () => {
-    saveFtpConfigAsync(ftpConfig)
-      .then(() => toast.success('FTP nastavitve shranjene'))
-      .catch(() => toast.error('Napaka pri shranjevanju FTP nastavitev'));
-  };
-
   const isExpired = (endDate: string) => new Date(endDate) < new Date();
   const isNotStarted = (startDate: string) => new Date(startDate) > new Date();
 
@@ -143,89 +128,12 @@ const Dashboard = () => {
             <p className="mt-1 text-muted-foreground">Upravljajte vsebino predvajalnika oglasov</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowFtp(!showFtp)} className="gap-2">
-              <Server className="h-4 w-4" />
-              FTP
-            </Button>
             <Button onClick={() => navigate('/player')} size="lg" className="gap-2">
               <Monitor className="h-4 w-4" />
               Predvajaj
             </Button>
           </div>
         </div>
-
-        {/* FTP Settings */}
-        {showFtp && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Server className="h-5 w-5 text-primary" />
-                FTP strežnik
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Nastavite FTP povezavo za sinhronizacijo vsebin. V Electron okolju se bo vsebina nalagala neposredno s strežnika.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Gostitelj (host)</Label>
-                  <Input
-                    value={ftpConfig.host}
-                    onChange={e => setFtpConfigState({ ...ftpConfig, host: e.target.value })}
-                    placeholder="ftp.example.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Vrata (port)</Label>
-                  <Input
-                    type="number"
-                    value={ftpConfig.port}
-                    onChange={e => setFtpConfigState({ ...ftpConfig, port: parseInt(e.target.value) || 21 })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Uporabniško ime</Label>
-                  <Input
-                    value={ftpConfig.username}
-                    onChange={e => setFtpConfigState({ ...ftpConfig, username: e.target.value })}
-                    placeholder="user"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Geslo</Label>
-                  <Input
-                    type="password"
-                    value={ftpConfig.password}
-                    onChange={e => setFtpConfigState({ ...ftpConfig, password: e.target.value })}
-                    placeholder="••••••••"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Oddaljena pot</Label>
-                  <Input
-                    value={ftpConfig.remotePath}
-                    onChange={e => setFtpConfigState({ ...ftpConfig, remotePath: e.target.value })}
-                    placeholder="/ads"
-                  />
-                </div>
-                <div className="flex items-end gap-3 pb-0.5">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={ftpConfig.enabled}
-                      onCheckedChange={checked => setFtpConfigState({ ...ftpConfig, enabled: checked })}
-                    />
-                    <Label>Omogočeno</Label>
-                  </div>
-                </div>
-              </div>
-              <Button onClick={handleSaveFtp} className="gap-2">
-                <Settings className="h-4 w-4" />
-                Shrani nastavitve
-              </Button>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Default Image */}
         <Card>
