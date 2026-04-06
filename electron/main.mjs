@@ -23,6 +23,7 @@ let configPath = '';
 let appConfig = {
   startupMode: 'launcher', // launcher | admin | player
   playerFullscreen: true,
+  preferredApiBase: '',
 };
 
 function normalizeMode(value) {
@@ -38,6 +39,7 @@ function loadAppConfig() {
     appConfig = {
       startupMode: normalizeMode(raw?.startupMode),
       playerFullscreen: raw?.playerFullscreen !== false,
+      preferredApiBase: String(raw?.preferredApiBase ?? ''),
     };
   } catch {
     // ignore malformed config and continue with defaults
@@ -118,6 +120,10 @@ async function findReachableControlUrl(targets) {
 async function resolveControlUrl() {
   if (mode === 'control') return localhostControlUrl;
   if (controlUrlFromEnv?.trim()) return controlUrlFromEnv;
+  if (appConfig.preferredApiBase) {
+    const preferredOrigin = appConfig.preferredApiBase.replace(/\/api\/?$/, '');
+    if (await probeControlHealth(preferredOrigin)) return preferredOrigin;
+  }
 
   if (await probeControlHealth(localhostControlUrl)) return localhostControlUrl;
 
@@ -152,7 +158,7 @@ function createWindow() {
 
   if (!app.isPackaged) {
     if (mode === 'control' || mode === 'admin') {
-      win.loadURL(`${viteDevUrl}/?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
+      win.loadURL(`${viteDevUrl}/admin?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
     } else if (mode === 'player') {
       win.loadURL(`${viteDevUrl}/player?deviceId=${encodeURIComponent(deviceId)}&apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
     } else {
@@ -164,7 +170,7 @@ function createWindow() {
   const indexPath = join(__dirname, '..', 'dist', 'index.html');
   const playerPath = join(__dirname, '..', 'dist', 'index.html');
   if (mode === 'control' || mode === 'admin') {
-    win.loadFile(indexPath, { query: { apiBase: `${resolvedControlUrl}/api` } });
+    win.loadFile(indexPath, { hash: '/admin', query: { apiBase: `${resolvedControlUrl}/api` } });
   } else if (mode === 'player') {
     win.loadFile(playerPath, { hash: '/player', query: { deviceId, apiBase: `${resolvedControlUrl}/api` } });
   } else {
@@ -181,7 +187,7 @@ function navigateMainWindow(targetMode) {
     if (mode === 'player') {
       mainWindow.loadURL(`${viteDevUrl}/player?deviceId=${encodeURIComponent(deviceId)}&apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
     } else if (mode === 'admin' || mode === 'control') {
-      mainWindow.loadURL(`${viteDevUrl}/?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
+      mainWindow.loadURL(`${viteDevUrl}/admin?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
     } else {
       mainWindow.loadURL(`${viteDevUrl}/launcher?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
     }
@@ -192,7 +198,7 @@ function navigateMainWindow(targetMode) {
   if (mode === 'player') {
     mainWindow.loadFile(indexPath, { hash: '/player', query: { deviceId, apiBase: `${resolvedControlUrl}/api` } });
   } else if (mode === 'admin' || mode === 'control') {
-    mainWindow.loadFile(indexPath, { query: { apiBase: `${resolvedControlUrl}/api` } });
+    mainWindow.loadFile(indexPath, { hash: '/admin', query: { apiBase: `${resolvedControlUrl}/api` } });
   } else {
     mainWindow.loadFile(indexPath, { hash: '/launcher', query: { apiBase: `${resolvedControlUrl}/api` } });
   }
@@ -210,12 +216,14 @@ app.whenReady().then(async () => {
     mode,
     resolvedControlUrl,
     controlPort,
+    preferredApiBase: appConfig.preferredApiBase,
   }));
 
   ipcMain.handle('app-config:set', (_event, nextConfig) => {
     saveAppConfig({
       startupMode: normalizeMode(nextConfig?.startupMode),
       playerFullscreen: nextConfig?.playerFullscreen !== false,
+      preferredApiBase: String(nextConfig?.preferredApiBase ?? appConfig.preferredApiBase ?? ''),
     });
     navigateMainWindow(appConfig.startupMode);
     return appConfig;

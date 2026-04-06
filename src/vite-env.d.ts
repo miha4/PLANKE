@@ -6,6 +6,7 @@ interface ElectronAppConfig {
   mode: 'launcher' | 'admin' | 'player';
   resolvedControlUrl: string;
   controlPort: string;
+  preferredApiBase: string;
 }
 
 interface Window {

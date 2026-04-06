@@ -17,7 +17,8 @@ const App = () => (
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Launcher />} />
+          <Route path="/admin" element={<Dashboard />} />
           <Route path="/launcher" element={<Launcher />} />
           <Route path="/player" element={<Player />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

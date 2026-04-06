@@ -22,14 +22,23 @@ const Launcher = () => {
   const navigate = useNavigate();
   const [searching, setSearching] = useState(false);
   const [discoveredApiBase, setDiscoveredApiBase] = useState<string | null>(null);
+  const [selectedApiBase, setSelectedApiBase] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<'admin' | 'player'>('admin');
   const [playerFullscreen, setPlayerFullscreen] = useState(true);
   const manualApiBase = useMemo(() => getManualAdminApiBase(), []);
 
   useEffect(() => {
+    setSelectedApiBase(manualApiBase);
     window.electronApp?.getConfig().then(config => {
       setPlayerFullscreen(config.playerFullscreen);
+      if (config.startupMode === 'admin' || config.startupMode === 'player') {
+        setSelectedMode(config.startupMode);
+      }
+      if (config.preferredApiBase) {
+        setSelectedApiBase(config.preferredApiBase);
+      }
     }).catch(() => {});
-  }, []);
+  }, [manualApiBase]);
 
   const handleSearch = async () => {
     setSearching(true);
@@ -37,6 +46,7 @@ const Launcher = () => {
       const found = await searchAdminAppAsync();
       if (found) {
         setDiscoveredApiBase(found);
+        setSelectedApiBase(found);
         toast.success(`Najden admin app: ${found}`);
       } else {
         setDiscoveredApiBase(null);
@@ -49,18 +59,27 @@ const Launcher = () => {
 
   const openAdmin = async () => {
     if (window.electronApp) {
-      await window.electronApp.setConfig({ startupMode: 'admin' });
+      await window.electronApp.setConfig({ startupMode: 'admin', preferredApiBase: selectedApiBase || manualApiBase });
       return;
     }
-    navigate('/');
+    navigate('/admin');
   };
 
   const openPlayer = async () => {
     if (window.electronApp) {
-      await window.electronApp.setConfig({ startupMode: 'player', playerFullscreen });
+      await window.electronApp.setConfig({
+        startupMode: 'player',
+        playerFullscreen,
+        preferredApiBase: selectedApiBase || manualApiBase,
+      });
       return;
     }
     navigate('/player');
+  };
+
+  const proceedWithSelection = async () => {
+    if (selectedMode === 'admin') await openAdmin();
+    else await openPlayer();
   };
 
   return (
@@ -72,7 +91,12 @@ const Launcher = () => {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedMode('admin')}
+            className={`cursor-pointer transition-transform duration-200 hover:scale-[1.02] ${selectedMode === 'admin' ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+          >
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings2 className="h-5 w-5 text-primary" />
@@ -94,7 +118,12 @@ const Launcher = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedMode('player')}
+            className={`cursor-pointer transition-transform duration-200 hover:scale-[1.02] ${selectedMode === 'player' ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+          >
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MonitorPlay className="h-5 w-5 text-primary" />
@@ -120,12 +149,31 @@ const Launcher = () => {
                   {searching ? 'Iščem admin app...' : 'Iskanje admin appa'}
                 </Button>
               </div>
-              <div className="rounded-md border p-3 text-xs">
+              <div className="rounded-md border p-3 text-xs space-y-2">
                 <div className="font-medium">Najden admin API:</div>
-                <div className="mt-1 break-all"><code>{discoveredApiBase || 'Ni najden (uporabi ročni URL iz Admin zavihka).'}</code></div>
+                <button
+                  className={`w-full break-all rounded border p-2 text-left ${selectedApiBase === manualApiBase ? 'border-primary bg-primary/10' : ''}`}
+                  onClick={() => setSelectedApiBase(manualApiBase)}
+                >
+                  <code>{manualApiBase}</code>
+                </button>
+                {discoveredApiBase && (
+                  <button
+                    className={`w-full break-all rounded border p-2 text-left ${selectedApiBase === discoveredApiBase ? 'border-primary bg-primary/10' : ''}`}
+                    onClick={() => setSelectedApiBase(discoveredApiBase)}
+                  >
+                    <code>{discoveredApiBase}</code>
+                  </button>
+                )}
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        <div className="flex justify-end">
+          <Button size="lg" onClick={proceedWithSelection}>
+            Nadaljuj kot: {selectedMode === 'admin' ? 'Admin' : 'Player'}
+          </Button>
         </div>
       </div>
     </div>
