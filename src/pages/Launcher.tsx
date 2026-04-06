@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { MonitorPlay, Settings2, Search, Server } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { searchAdminAppAsync } from '@/lib/content-service';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { searchAdminAppAsync, searchAdminByIpAsync, probeAdminApiBaseAsync } from '@/lib/content-service';
 import { toast } from 'sonner';
 
 function getManualAdminApiBase() {
@@ -25,17 +28,28 @@ const Launcher = () => {
   const [selectedApiBase, setSelectedApiBase] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<'admin' | 'player'>('admin');
   const [playerFullscreen, setPlayerFullscreen] = useState(true);
+  const [progressBarEnabled, setProgressBarEnabled] = useState(true);
+  const [progressBarColor, setProgressBarColor] = useState('#3b82f6');
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardIp, setWizardIp] = useState('');
+  const [wizardPortFrom, setWizardPortFrom] = useState(8787);
+  const [wizardPortTo, setWizardPortTo] = useState(8795);
+  const [manualApiBaseInput, setManualApiBaseInput] = useState('');
+  const [wizardSearching, setWizardSearching] = useState(false);
   const manualApiBase = useMemo(() => getManualAdminApiBase(), []);
 
   useEffect(() => {
     setSelectedApiBase(manualApiBase);
     window.electronApp?.getConfig().then(config => {
       setPlayerFullscreen(config.playerFullscreen);
+      setProgressBarEnabled(config.progressBarEnabled !== false);
+      setProgressBarColor(config.progressBarColor || '#3b82f6');
       if (config.startupMode === 'admin' || config.startupMode === 'player') {
         setSelectedMode(config.startupMode);
       }
       if (config.preferredApiBase) {
         setSelectedApiBase(config.preferredApiBase);
+        setManualApiBaseInput(config.preferredApiBase);
       }
     }).catch(() => {});
   }, [manualApiBase]);
@@ -57,9 +71,51 @@ const Launcher = () => {
     }
   };
 
+  const handleWizardScan = async () => {
+    const from = Math.max(1, Math.min(65535, wizardPortFrom));
+    const to = Math.max(from, Math.min(65535, wizardPortTo));
+    const ports: number[] = [];
+    for (let port = from; port <= to; port += 1) ports.push(port);
+
+    setWizardSearching(true);
+    try {
+      const found = await searchAdminByIpAsync(wizardIp, ports);
+      if (found) {
+        setDiscoveredApiBase(found);
+        setSelectedApiBase(found);
+        setManualApiBaseInput(found);
+        toast.success(`Najden admin app na ${found}`);
+      } else {
+        toast.error('Na vpisanem IP-ju ni najdenega admin appa v izbranem port range-u.');
+      }
+    } finally {
+      setWizardSearching(false);
+    }
+  };
+
+  const applyManualApiBase = async () => {
+    const value = manualApiBaseInput.trim();
+    if (!value) return;
+    const ok = await probeAdminApiBaseAsync(value);
+    if (!ok) {
+      toast.error('Vpisan API ni dosegljiv (/api/health ne odgovori).');
+      return;
+    }
+    const normalized = value.replace(/\/$/, '').replace(/\/api$/, '/api');
+    setSelectedApiBase(normalized);
+    setDiscoveredApiBase(normalized);
+    toast.success(`Uporabljen API: ${normalized}`);
+    setWizardOpen(false);
+  };
+
   const openAdmin = async () => {
     if (window.electronApp) {
-      await window.electronApp.setConfig({ startupMode: 'admin', preferredApiBase: selectedApiBase || manualApiBase });
+      await window.electronApp.setConfig({
+        startupMode: 'admin',
+        preferredApiBase: selectedApiBase || manualApiBase,
+        progressBarEnabled,
+        progressBarColor,
+      });
       return;
     }
     navigate('/admin');
@@ -71,9 +127,13 @@ const Launcher = () => {
         startupMode: 'player',
         playerFullscreen,
         preferredApiBase: selectedApiBase || manualApiBase,
+        progressBarEnabled,
+        progressBarColor,
       });
       return;
     }
+    localStorage.setItem('player-progress-enabled', progressBarEnabled ? '1' : '0');
+    localStorage.setItem('player-progress-color', progressBarColor);
     navigate('/player');
   };
 
@@ -144,10 +204,62 @@ const Launcher = () => {
                     onChange={e => setPlayerFullscreen(e.target.checked)}
                   />
                 </label>
+                <label className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>Progress bar omogočen</span>
+                  <input
+                    type="checkbox"
+                    checked={progressBarEnabled}
+                    onChange={e => setProgressBarEnabled(e.target.checked)}
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>Barva progress bara</span>
+                  <input
+                    type="color"
+                    value={progressBarColor}
+                    onChange={e => setProgressBarColor(e.target.value)}
+                  />
+                </label>
                 <Button variant="outline" className="w-full gap-2" onClick={handleSearch} disabled={searching}>
                   <Search className="h-4 w-4" />
                   {searching ? 'Iščem admin app...' : 'Iskanje admin appa'}
                 </Button>
+                <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full">Čarovnik: IP + samodejni port scan</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Iskanje Electron Admin Appa</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>IP naslov admin naprave</Label>
+                        <Input value={wizardIp} onChange={e => setWizardIp(e.target.value)} placeholder="192.168.1.50" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Port od</Label>
+                          <Input type="number" value={wizardPortFrom} onChange={e => setWizardPortFrom(parseInt(e.target.value) || 8787)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Port do</Label>
+                          <Input type="number" value={wizardPortTo} onChange={e => setWizardPortTo(parseInt(e.target.value) || 8795)} />
+                        </div>
+                      </div>
+                      <Button className="w-full" onClick={handleWizardScan} disabled={wizardSearching}>
+                        {wizardSearching ? 'Iščem...' : 'Poišči admin app po IP + portih'}
+                      </Button>
+                      <div className="space-y-2">
+                        <Label>Ročni vnos API (fallback)</Label>
+                        <Input value={manualApiBaseInput} onChange={e => setManualApiBaseInput(e.target.value)} placeholder="http://192.168.1.50:8787/api" />
+                        <Button variant="secondary" className="w-full" onClick={applyManualApiBase}>
+                          Uporabi ročni API
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
               <div className="rounded-md border p-3 text-xs space-y-2">
                 <div className="font-medium">Najden admin API:</div>

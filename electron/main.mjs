@@ -24,6 +24,8 @@ let appConfig = {
   startupMode: 'launcher', // launcher | admin | player
   playerFullscreen: true,
   preferredApiBase: '',
+  progressBarEnabled: true,
+  progressBarColor: '#3b82f6',
 };
 
 function normalizeMode(value) {
@@ -40,6 +42,8 @@ function loadAppConfig() {
       startupMode: normalizeMode(raw?.startupMode),
       playerFullscreen: raw?.playerFullscreen !== false,
       preferredApiBase: String(raw?.preferredApiBase ?? ''),
+      progressBarEnabled: raw?.progressBarEnabled !== false,
+      progressBarColor: String(raw?.progressBarColor ?? '#3b82f6'),
     };
   } catch {
     // ignore malformed config and continue with defaults
@@ -224,6 +228,8 @@ app.whenReady().then(async () => {
       startupMode: normalizeMode(nextConfig?.startupMode),
       playerFullscreen: nextConfig?.playerFullscreen !== false,
       preferredApiBase: String(nextConfig?.preferredApiBase ?? appConfig.preferredApiBase ?? ''),
+      progressBarEnabled: nextConfig?.progressBarEnabled !== false,
+      progressBarColor: String(nextConfig?.progressBarColor ?? appConfig.progressBarColor ?? '#3b82f6'),
     });
     navigateMainWindow(appConfig.startupMode);
     return appConfig;

@@ -7,6 +7,8 @@ interface ElectronAppConfig {
   resolvedControlUrl: string;
   controlPort: string;
   preferredApiBase: string;
+  progressBarEnabled: boolean;
+  progressBarColor: string;
 }
 
 interface Window {

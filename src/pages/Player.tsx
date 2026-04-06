@@ -10,6 +10,9 @@ const Player = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const [defaultImage, setDefaultImageState] = useState<string | null>(null);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressEnabled, setProgressEnabled] = useState(true);
+  const [progressColor, setProgressColor] = useState('#3b82f6');
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -20,6 +23,14 @@ const Player = () => {
   useEffect(() => {
     (async () => {
       try {
+        if (window.electronApp) {
+          const cfg = await window.electronApp.getConfig();
+          setProgressEnabled(cfg.progressBarEnabled !== false);
+          setProgressColor(cfg.progressBarColor || '#3b82f6');
+        } else {
+          setProgressEnabled(localStorage.getItem('player-progress-enabled') !== '0');
+          setProgressColor(localStorage.getItem('player-progress-color') || '#3b82f6');
+        }
         const loadedItems = await getActiveContentItemsAsync();
         setItems(loadedItems);
         setDefaultImageState(await getDefaultImageAsync());
@@ -72,18 +83,36 @@ const Player = () => {
   // Timer for images
   useEffect(() => {
     if (!currentItem || currentItem.type !== 'image') return;
+    setProgressPercent(0);
+    const totalMs = Math.max(1000, currentItem.displayDurationSeconds * 1000);
+    const startTime = Date.now();
+    const progressTimer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      setProgressPercent(Math.min(100, (elapsed / totalMs) * 100));
+    }, 100);
     timerRef.current = setTimeout(goNext, currentItem.displayDurationSeconds * 1000);
-    return () => clearTimeout(timerRef.current);
+    return () => {
+      clearTimeout(timerRef.current);
+      clearInterval(progressTimer);
+    };
   }, [currentItem, currentIndex, goNext]);
 
   // Video ended handler
   const handleVideoEnded = useCallback(() => {
+    setProgressPercent(100);
     goNext();
   }, [goNext]);
+
+  const handleVideoTimeUpdate = () => {
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    setProgressPercent(Math.min(100, (video.currentTime / video.duration) * 100));
+  };
 
   // Autoplay video
   useEffect(() => {
     if (currentItem?.type === 'video' && videoRef.current) {
+      setProgressPercent(0);
       videoRef.current.play().catch(() => {});
     }
   }, [currentItem, currentIndex]);
@@ -173,16 +202,18 @@ const Player = () => {
           className="h-full w-full object-contain bg-black"
           muted
           onEnded={handleVideoEnded}
+          onTimeUpdate={handleVideoTimeUpdate}
         />
       ) : null}
 
       {/* Progress bar */}
-      {currentItem?.type === 'image' && (
+      {progressEnabled && currentItem && (
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-foreground/10">
           <div
             className="h-full bg-primary transition-none"
             style={{
-              animation: `progress-bar ${currentItem.displayDurationSeconds}s linear forwards`,
+              width: `${progressPercent}%`,
+              backgroundColor: progressColor,
             }}
           />
         </div>

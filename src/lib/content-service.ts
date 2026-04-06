@@ -57,6 +57,20 @@ async function probeApiBase(apiBase: string): Promise<boolean> {
   }
 }
 
+export async function probeAdminApiBaseAsync(apiBase: string): Promise<boolean> {
+  return probeApiBase(apiBase.replace(/\/$/, '').replace(/\/api$/, '/api'));
+}
+
+export async function searchAdminByIpAsync(ip: string, ports: number[]): Promise<string | null> {
+  const cleanIp = ip.trim();
+  if (!cleanIp) return null;
+  for (const port of ports) {
+    const candidate = `http://${cleanIp}:${port}/api`;
+    if (await probeApiBase(candidate)) return candidate;
+  }
+  return null;
+}
+
 async function resolveApiBase(): Promise<string> {
   if (resolvedApiBaseCache) return resolvedApiBaseCache;
   if (resolvingApiBasePromise) return resolvingApiBasePromise;
