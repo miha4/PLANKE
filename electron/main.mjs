@@ -139,9 +139,11 @@ async function resolveControlUrl() {
 
 function startBackendIfNeeded() {
   if (mode === 'player') return;
+  const controlDataDir = join(app.getPath('userData'), 'control-data');
+  mkdirSync(controlDataDir, { recursive: true });
   backendProcess = spawn(process.execPath, [join(__dirname, '..', 'backend-control-server.mjs')], {
     stdio: 'inherit',
-    env: { ...process.env, CONTROL_PORT: controlPort },
+    env: { ...process.env, CONTROL_PORT: controlPort, CONTROL_DATA_DIR: controlDataDir },
   });
 }
 

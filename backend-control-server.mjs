@@ -9,7 +9,9 @@ import { networkInterfaces } from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url); // polna pot do .js datoteke
 const __dirname = dirname(__filename); // mapa, kjer ta datoteka je
-const dataDir = join(__dirname, '.control-data'); // mapa za podatke
+const dataDir = process.env.CONTROL_DATA_DIR
+  ? join(process.env.CONTROL_DATA_DIR)
+  : join(__dirname, '.control-data'); // mapa za podatke
 const mediaDir = join(dataDir, 'media'); // fizične slike in videi
 mkdirSync(dataDir, { recursive: true }); // ce mape ne obstajajo, jih ustvari
 mkdirSync(mediaDir, { recursive: true });

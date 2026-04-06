@@ -186,6 +186,9 @@ const Dashboard = () => {
             <p className="text-muted-foreground">
               Če sta admin in player v istem omrežju, lahko player uporablja samodejni scan (gumb »Iskanje admin appa« v launcherju).
             </p>
+            <p className="text-muted-foreground">
+              Če se IP admin naprave dnevno spreminja (DHCP), uporabi samodejni scan ali čarovnik IP+port scan v launcherju.
+            </p>
             <div className="rounded-md border p-3 space-y-1">
               <div><strong>Port:</strong> {networkInfo?.port ?? 8787}</div>
               <div><strong>API:</strong> {networkInfo ? `${networkInfo.apiPath}` : '/api'}</div>
@@ -200,6 +203,11 @@ const Dashboard = () => {
             <p className="text-muted-foreground">
               Za zunanje omrežje (izven LAN) samodejni scan ne deluje. Potrebuješ javni endpoint (npr. VPN, reverse proxy, tunnel) in ročni URL.
             </p>
+            <div className="rounded-md border p-3 space-y-1 text-xs">
+              <div className="font-medium">Firewall priporočilo (odpri port, ne ugašaj firewall-a):</div>
+              <div>Windows (PowerShell admin): <code>netsh advfirewall firewall add rule name=\"PLANKE-8787\" dir=in action=allow protocol=TCP localport=8787</code></div>
+              <div>Linux (ufw): <code>sudo ufw allow 8787/tcp</code></div>
+            </div>
           </CardContent>
         </Card>
 
