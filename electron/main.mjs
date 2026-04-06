@@ -7,7 +7,7 @@ import { networkInterfaces } from 'node:os';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const mode = process.env.APP_MODE || 'control'; // control | player
+const mode = process.env.APP_MODE || 'launcher'; // launcher | control | player
 const controlUrlFromEnv = process.env.CONTROL_URL;
 const deviceId = process.env.DEVICE_ID || 'player-01';
 const viteDevUrl = process.env.VITE_DEV_SERVER_URL || process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173';
@@ -92,7 +92,7 @@ async function resolveControlUrl() {
 }
 
 function startBackendIfNeeded() {
-  if (mode !== 'control') return;
+  if (mode === 'player') return;
   backendProcess = spawn(process.execPath, [join(__dirname, '..', 'backend-control-server.mjs')], {
     stdio: 'inherit',
     env: { ...process.env, CONTROL_PORT: controlPort },
@@ -113,8 +113,10 @@ function createWindow() {
   if (!app.isPackaged) {
     if (mode === 'control') {
       win.loadURL(`${viteDevUrl}/?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
-    } else {
+    } else if (mode === 'player') {
       win.loadURL(`${viteDevUrl}/player?deviceId=${encodeURIComponent(deviceId)}&apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
+    } else {
+      win.loadURL(`${viteDevUrl}/launcher?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
     }
     return;
   }
@@ -123,8 +125,10 @@ function createWindow() {
   const playerPath = join(__dirname, '..', 'dist', 'index.html');
   if (mode === 'control') {
     win.loadFile(indexPath, { query: { apiBase: `${resolvedControlUrl}/api` } });
-  } else {
+  } else if (mode === 'player') {
     win.loadFile(playerPath, { hash: '/player', query: { deviceId, apiBase: `${resolvedControlUrl}/api` } });
+  } else {
+    win.loadFile(indexPath, { hash: '/launcher', query: { apiBase: `${resolvedControlUrl}/api` } });
   }
 }
 

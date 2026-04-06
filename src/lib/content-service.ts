@@ -80,6 +80,17 @@ async function resolveApiBase(): Promise<string> {
   }
 }
 
+export async function searchAdminAppAsync(): Promise<string | null> {
+  const candidates = buildApiBaseCandidates();
+  for (const candidate of candidates) {
+    if (await probeApiBase(candidate)) {
+      resolvedApiBaseCache = candidate;
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function getResolvedBackendOrigin() {
   const fallback = buildApiBaseCandidates()[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
   return new URL(resolvedApiBaseCache || fallback).origin;

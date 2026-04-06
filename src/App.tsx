@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "./pages/Dashboard.tsx";
 import Player from "./pages/Player.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import Launcher from "./pages/Launcher.tsx";
 
 const queryClient = new QueryClient();
 
@@ -17,6 +18,7 @@ const App = () => (
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/launcher" element={<Launcher />} />
           <Route path="/player" element={<Player />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

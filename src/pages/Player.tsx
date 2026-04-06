@@ -100,11 +100,11 @@ const Player = () => {
     return (
       <div
         ref={containerRef}
-        className="player-screen relative h-screen w-screen overflow-hidden"
+        className="player-screen fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-black"
         onMouseMove={handleMouseMove}
         style={{ cursor: showControls ? 'default' : 'none' }}
       >
-        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-contain" />
+        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-cover" />
         {/* Controls overlay */}
         <div
           className={`absolute inset-0 transition-opacity duration-300 ${
@@ -151,7 +151,7 @@ const Player = () => {
   return (
     <div
       ref={containerRef}
-      className="player-screen relative h-screen w-screen overflow-hidden"
+      className="player-screen fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-black"
       onMouseMove={handleMouseMove}
       style={{ cursor: showControls ? 'default' : 'none' }}
     >
@@ -161,14 +161,14 @@ const Player = () => {
           key={currentItem.id + currentIndex}
           src={currentItem.dataUrl}
           alt={currentItem.name}
-          className="h-full w-full object-contain animate-fade-in"
+          className="h-full w-full object-cover animate-fade-in"
         />
       ) : currentItem?.type === 'video' ? (
         <video
           key={currentItem.id + currentIndex}
           ref={videoRef}
           src={currentItem.dataUrl}
-          className="h-full w-full object-contain"
+          className="h-full w-full object-cover"
           muted
           onEnded={handleVideoEnded}
         />
