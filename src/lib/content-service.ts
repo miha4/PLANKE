@@ -8,6 +8,17 @@ function getApiBase() {
   return url.searchParams.get('apiBase') || import.meta.env.VITE_API_BASE || 'http://localhost:8787/api';
 }
 
+function getBackendOrigin() {
+  return new URL(getApiBase()).origin;
+}
+
+function normalizeMediaUrl(url: string | null | undefined) {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
+  if (url.startsWith('/')) return `${getBackendOrigin()}${url}`;
+  return `${getBackendOrigin()}/${url}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${getApiBase()}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -19,11 +30,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getAllContentItemsAsync(): Promise<ContentItem[]> {
-  return request<ContentItem[]>('/content');
+  const items = await request<ContentItem[]>('/content');
+  return items.map(item => ({ ...item, dataUrl: normalizeMediaUrl(item.dataUrl) ?? '' }));
 }
 
 export async function getActiveContentItemsAsync(): Promise<ContentItem[]> {
-  return request<ContentItem[]>('/content/active');
+  const items = await request<ContentItem[]>('/content/active');
+  return items.map(item => ({ ...item, dataUrl: normalizeMediaUrl(item.dataUrl) ?? '' }));
 }
 
 export async function uploadMediaAsync(file: File): Promise<string> {
@@ -37,11 +50,12 @@ export async function uploadMediaAsync(file: File): Promise<string> {
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const result = await response.json() as { mediaUrl: string };
-  return result.mediaUrl;
+  return normalizeMediaUrl(result.mediaUrl) ?? '';
 }
 
 export async function addContentItemAsync(item: Omit<ContentItem, 'id' | 'createdAt' | 'order'>): Promise<ContentItem> {
-  return request<ContentItem>('/content', { method: 'POST', body: JSON.stringify(item) });
+  const created = await request<ContentItem>('/content', { method: 'POST', body: JSON.stringify(item) });
+  return { ...created, dataUrl: normalizeMediaUrl(created.dataUrl) ?? '' };
 }
 
 export async function removeContentItemAsync(id: string): Promise<void> {
@@ -54,7 +68,7 @@ export async function updateContentItemAsync(id: string, updates: Partial<Conten
 
 export async function getDefaultImageAsync(): Promise<string | null> {
   const result = await request<{ dataUrl: string | null }>('/default-image');
-  return result.dataUrl;
+  return normalizeMediaUrl(result.dataUrl);
 }
 
 export async function setDefaultImageAsync(mediaUrl: string): Promise<void> {

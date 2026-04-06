@@ -47,19 +47,13 @@ function sanitizeFileName(name = 'file') {
   return String(name).replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
-function buildBaseUrl(req) {
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  return `${proto}://${host}`;
-}
-
-function toPublicMediaUrl(req, storedValue) {
+function toPublicMediaUrl(_req, storedValue) {
   if (!storedValue) return null;
   if (storedValue.startsWith('http://') || storedValue.startsWith('https://') || storedValue.startsWith('data:')) {
     return storedValue;
   }
-  if (storedValue.startsWith('/')) return `${buildBaseUrl(req)}${storedValue}`;
-  return `${buildBaseUrl(req)}/media/${storedValue}`;
+  if (storedValue.startsWith('/')) return storedValue;
+  return `/media/${storedValue}`;
 }
 
 function parseDataUrl(dataUrl) {
