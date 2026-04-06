@@ -291,14 +291,7 @@ app.delete('/api/default-image', (_req, res) => {
   res.status(204).end();
 });
 
-app.get('/api/ftp-config', (_req, res) => {
-  res.json(readSetting('ftpConfig', { host: '', port: 21, username: '', password: '', remotePath: '/ads', enabled: false }));
-});
-
-app.put('/api/ftp-config', (req, res) => {
-  writeSetting('ftpConfig', req.body ?? { host: '', port: 21, username: '', password: '', remotePath: '/ads', enabled: false });
-  res.json({ ok: true });
-});
+// FTP endpointi so odstranjeni, ker aplikacija uporablja lokalni upload in media storage.
 
 // zagon strežnika
 const port = Number(process.env.CONTROL_PORT ?? 8787);

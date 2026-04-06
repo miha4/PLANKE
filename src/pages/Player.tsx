@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ContentItem } from '@/lib/content-store';
-import { getActiveContentItemsAsync, getDefaultImageAsync } from '@/lib/content-service';
+import { getActiveContentItemsAsync, getDefaultImageAsync, isBackendUnavailableError } from '@/lib/content-service';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Player = () => {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -18,10 +19,18 @@ const Player = () => {
   // Load content and request fullscreen
   useEffect(() => {
     (async () => {
-      const loadedItems = await getActiveContentItemsAsync();
-      setItems(loadedItems);
-      setDefaultImageState(await getDefaultImageAsync());
-      if (loadedItems.length === 0) setCurrentIndex(-1);
+      try {
+        const loadedItems = await getActiveContentItemsAsync();
+        setItems(loadedItems);
+        setDefaultImageState(await getDefaultImageAsync());
+        if (loadedItems.length === 0) setCurrentIndex(-1);
+      } catch (error) {
+        if (isBackendUnavailableError(error)) {
+          toast.error('Backend ni dosegljiv. Zaženi backend in preveri, da je port 8787 forwardan (Codespaces).');
+        }
+        setItems([]);
+        setCurrentIndex(-1);
+      }
     })();
 
     // Request fullscreen
@@ -32,10 +41,15 @@ const Player = () => {
 
     // Periodically refresh active items (every 60s)
     const interval = setInterval(() => {
-      getActiveContentItemsAsync().then(fresh => {
-        setItems(fresh);
-        if (fresh.length === 0) setCurrentIndex(-1);
-      });
+      getActiveContentItemsAsync()
+        .then(fresh => {
+          setItems(fresh);
+          if (fresh.length === 0) setCurrentIndex(-1);
+        })
+        .catch(() => {
+          setItems([]);
+          setCurrentIndex(-1);
+        });
     }, 60000);
 
     return () => {
@@ -86,11 +100,11 @@ const Player = () => {
     return (
       <div
         ref={containerRef}
-        className="player-screen relative h-screen w-screen overflow-hidden"
+        className="player-screen fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-black"
         onMouseMove={handleMouseMove}
         style={{ cursor: showControls ? 'default' : 'none' }}
       >
-        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-contain" />
+        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-cover" />
         {/* Controls overlay */}
         <div
           className={`absolute inset-0 transition-opacity duration-300 ${
@@ -137,7 +151,7 @@ const Player = () => {
   return (
     <div
       ref={containerRef}
-      className="player-screen relative h-screen w-screen overflow-hidden"
+      className="player-screen fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-black"
       onMouseMove={handleMouseMove}
       style={{ cursor: showControls ? 'default' : 'none' }}
     >
@@ -147,14 +161,14 @@ const Player = () => {
           key={currentItem.id + currentIndex}
           src={currentItem.dataUrl}
           alt={currentItem.name}
-          className="h-full w-full object-contain animate-fade-in"
+          className="h-full w-full object-cover animate-fade-in"
         />
       ) : currentItem?.type === 'video' ? (
         <video
           key={currentItem.id + currentIndex}
           ref={videoRef}
           src={currentItem.dataUrl}
-          className="h-full w-full object-contain"
+          className="h-full w-full object-cover"
           muted
           onEnded={handleVideoEnded}
         />
