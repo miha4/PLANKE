@@ -1,7 +1,4 @@
-import {
-  ContentItem,
-  FtpConfig,
-} from './content-store';
+import { ContentItem } from './content-store';
 
 function getApiBase() {
   const url = new URL(window.location.href);
@@ -77,12 +74,4 @@ export async function setDefaultImageAsync(mediaUrl: string): Promise<void> {
 
 export async function removeDefaultImageAsync(): Promise<void> {
   await request('/default-image', { method: 'DELETE' });
-}
-
-export async function getFtpConfigAsync(): Promise<FtpConfig> {
-  return request<FtpConfig>('/ftp-config');
-}
-
-export async function saveFtpConfigAsync(config: FtpConfig): Promise<void> {
-  await request('/ftp-config', { method: 'PUT', body: JSON.stringify(config) });
 }
