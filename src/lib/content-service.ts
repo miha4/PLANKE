@@ -1,16 +1,6 @@
 import {
   ContentItem,
   FtpConfig,
-  getAllContentItems,
-  getActiveContentItems,
-  addContentItem as addLocal,
-  removeContentItem as removeLocal,
-  updateContentItem as updateLocal,
-  getDefaultImage as getDefaultLocal,
-  setDefaultImage as setDefaultLocal,
-  removeDefaultImage as removeDefaultLocal,
-  getFtpConfig as getFtpLocal,
-  saveFtpConfig as saveFtpLocal,
 } from './content-store';
 
 function getApiBase() {
@@ -29,82 +19,56 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getAllContentItemsAsync(): Promise<ContentItem[]> {
-  try {
-    return await request<ContentItem[]>('/content');
-  } catch {
-    return getAllContentItems();
-  }
+  return request<ContentItem[]>('/content');
 }
 
 export async function getActiveContentItemsAsync(): Promise<ContentItem[]> {
-  try {
-    return await request<ContentItem[]>('/content/active');
-  } catch {
-    return getActiveContentItems();
-  }
+  return request<ContentItem[]>('/content/active');
+}
+
+export async function uploadMediaAsync(file: File): Promise<string> {
+  const response = await fetch(`${getApiBase()}/upload`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const result = await response.json() as { mediaUrl: string };
+  return result.mediaUrl;
 }
 
 export async function addContentItemAsync(item: Omit<ContentItem, 'id' | 'createdAt' | 'order'>): Promise<ContentItem> {
-  try {
-    return await request<ContentItem>('/content', { method: 'POST', body: JSON.stringify(item) });
-  } catch {
-    return addLocal(item);
-  }
+  return request<ContentItem>('/content', { method: 'POST', body: JSON.stringify(item) });
 }
 
 export async function removeContentItemAsync(id: string): Promise<void> {
-  try {
-    await request<void>(`/content/${id}`, { method: 'DELETE' });
-  } catch {
-    removeLocal(id);
-  }
+  await request<void>(`/content/${id}`, { method: 'DELETE' });
 }
 
 export async function updateContentItemAsync(id: string, updates: Partial<ContentItem>): Promise<void> {
-  try {
-    await request<void>(`/content/${id}`, { method: 'PATCH', body: JSON.stringify(updates) });
-  } catch {
-    updateLocal(id, updates);
-  }
+  await request<void>(`/content/${id}`, { method: 'PATCH', body: JSON.stringify(updates) });
 }
 
 export async function getDefaultImageAsync(): Promise<string | null> {
-  try {
-    const result = await request<{ dataUrl: string | null }>('/default-image');
-    return result.dataUrl;
-  } catch {
-    return getDefaultLocal();
-  }
+  const result = await request<{ dataUrl: string | null }>('/default-image');
+  return result.dataUrl;
 }
 
-export async function setDefaultImageAsync(dataUrl: string): Promise<void> {
-  try {
-    await request('/default-image', { method: 'PUT', body: JSON.stringify({ dataUrl }) });
-  } catch {
-    setDefaultLocal(dataUrl);
-  }
+export async function setDefaultImageAsync(mediaUrl: string): Promise<void> {
+  await request('/default-image', { method: 'PUT', body: JSON.stringify({ mediaUrl }) });
 }
 
 export async function removeDefaultImageAsync(): Promise<void> {
-  try {
-    await request('/default-image', { method: 'DELETE' });
-  } catch {
-    removeDefaultLocal();
-  }
+  await request('/default-image', { method: 'DELETE' });
 }
 
 export async function getFtpConfigAsync(): Promise<FtpConfig> {
-  try {
-    return await request<FtpConfig>('/ftp-config');
-  } catch {
-    return getFtpLocal();
-  }
+  return request<FtpConfig>('/ftp-config');
 }
 
 export async function saveFtpConfigAsync(config: FtpConfig): Promise<void> {
-  try {
-    await request('/ftp-config', { method: 'PUT', body: JSON.stringify(config) });
-  } catch {
-    saveFtpLocal(config);
-  }
+  await request('/ftp-config', { method: 'PUT', body: JSON.stringify(config) });
 }

@@ -181,3 +181,48 @@ npm run dev:electron:control
 ```
 
 Tam bi se moralo odpreti Electron okno.
+
+---
+
+## Pojmi za neprogramerja (IP, port, localhost, Codespaces)
+
+- **IP naslov**: “hišna številka” naprave v omrežju (npr. računalnik ali strežnik).  
+- **Port**: “številka vrat” na tej napravi, kjer posluša določena aplikacija (npr. frontend 5173, backend 8787).  
+- **Zakaj različna porta?** Ker frontend in backend sta 2 ločena procesa/storitvi, vsak posluša na svojih “vratih”.  
+- **localhost**: pomeni “ta ista naprava”.  
+  - Na tvojem laptopu `localhost` kaže na laptop.  
+  - Na telefonu `localhost` kaže na telefon.  
+  - V Codespaces `localhost` kaže na Codespace container.
+- **Zakaj localhost na telefonu ni isti kot v Codespaces?** Ker sta to dve različni napravi/okolji.
+- **Public forwarded port (GitHub Codespaces)**: GitHub naredi javni URL do izbranega porta znotraj tvojega Codespace-a, da ga lahko odpreš iz drugih naprav.
+
+### Kako sestaviš delujoč `/player` URL
+
+1. Vzemi **public frontend URL** za port 5173.  
+2. Vzemi **public backend URL** za port 8787.  
+3. Dodaj `apiBase` query parameter.
+
+Primer:
+
+```text
+https://<frontend-5173-url>/player?apiBase=https://<backend-8787-url>/api
+```
+
+Če ta URL odpreš na telefonu, bo `/player` bral iste vsebine iz shared backenda.
+
+---
+
+## Najpreprostejša stabilna shared-storage rešitev (ta projekt)
+
+Priporočen tok:
+
+1. Uporabnik na telefonu ali računalniku izbere sliko/video v admin strani.
+2. Frontend pošlje datoteko na backend (`POST /api/upload`).
+3. Backend datoteko shrani v shared mapo (`.control-data/media`) in vrne javni `mediaUrl`.
+4. Frontend shrani metadata v `POST /api/content` (ime, datumi, tip, `mediaUrl`).
+5. `/player` bere samo `/api/content/active`, zato vse naprave vedno vidijo iste slike/videe.
+
+To pomeni:
+- **brez** localStorage kot glavnega vira,
+- enoten backend vir za vse naprave,
+- bolj stabilno deljenje vsebine med računalnikom in telefonom.
