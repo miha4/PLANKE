@@ -20,6 +20,8 @@ import {
   setDefaultImageAsync,
   removeDefaultImageAsync,
   isBackendUnavailableError,
+  getNetworkInfoAsync,
+  type NetworkInfo,
 } from '@/lib/content-service';
 import { toast } from 'sonner';
 
@@ -42,6 +44,7 @@ const Dashboard = () => {
   });
   const [dragOver, setDragOver] = useState(false);
   const [defaultImg, setDefaultImg] = useState<string | null>(null);
+  const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -64,6 +67,7 @@ const Dashboard = () => {
       await refresh();
       try {
         setDefaultImg(await getDefaultImageAsync());
+        setNetworkInfo(await getNetworkInfoAsync());
       } catch (error) {
         if (!isBackendUnavailableError(error)) {
           toast.error('Napaka pri nalaganju privzete slike');
@@ -173,6 +177,31 @@ const Dashboard = () => {
             </Button>
           </div>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Čarovnik za povezavo player naprav</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Če sta admin in player v istem omrežju, lahko player uporablja samodejni scan (gumb »Iskanje admin appa« v launcherju).
+            </p>
+            <div className="rounded-md border p-3 space-y-1">
+              <div><strong>Port:</strong> {networkInfo?.port ?? 8787}</div>
+              <div><strong>API:</strong> {networkInfo ? `${networkInfo.apiPath}` : '/api'}</div>
+              <div><strong>Health:</strong> {networkInfo ? `${networkInfo.healthPath}` : '/api/health'}</div>
+              <div className="pt-2"><strong>Možni lokalni IP-ji (ročni vnos):</strong></div>
+              <ul className="list-disc pl-5">
+                {(networkInfo?.addresses ?? []).map(ip => (
+                  <li key={ip}><code>http://{ip}:{networkInfo?.port ?? 8787}/api</code></li>
+                ))}
+              </ul>
+            </div>
+            <p className="text-muted-foreground">
+              Za zunanje omrežje (izven LAN) samodejni scan ne deluje. Potrebuješ javni endpoint (npr. VPN, reverse proxy, tunnel) in ročni URL.
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Default Image */}
         <Card>

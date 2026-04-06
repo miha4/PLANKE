@@ -112,7 +112,7 @@ const Player = () => {
         onMouseMove={handleMouseMove}
         style={{ cursor: showControls ? 'default' : 'none' }}
       >
-        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-cover" />
+        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-contain bg-black" />
         {/* Controls overlay */}
         <div
           className={`absolute inset-0 transition-opacity duration-300 ${
@@ -163,14 +163,14 @@ const Player = () => {
           key={currentItem.id + currentIndex}
           src={currentItem.dataUrl}
           alt={currentItem.name}
-          className="h-full w-full object-cover animate-fade-in"
+          className="h-full w-full object-contain bg-black animate-fade-in"
         />
       ) : currentItem?.type === 'video' ? (
         <video
           key={currentItem.id + currentIndex}
           ref={videoRef}
           src={currentItem.dataUrl}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain bg-black"
           muted
           onEnded={handleVideoEnded}
         />

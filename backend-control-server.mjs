@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'; // ustvarjanje map in zapis 
 import { dirname, join } from 'node:path'; // delo s potmi do map/datotek
 import { fileURLToPath } from 'node:url'; // pretvori import.meta.url v pravo datotecno pot
 import { DatabaseSync } from 'node:sqlite'; // SQLite baza
+import { networkInterfaces } from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url); // polna pot do .js datoteke
 const __dirname = dirname(__filename); // mapa, kjer ta datoteka je
@@ -141,6 +142,25 @@ function writeSetting(key, value) {
 //testni endpoint, da preverimo delovanje backenda
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, at: nowIso() });
+});
+
+app.get('/api/network-info', (_req, res) => {
+  const nets = networkInterfaces();
+  const addresses = [];
+  for (const list of Object.values(nets)) {
+    for (const net of list || []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        addresses.push(net.address);
+      }
+    }
+  }
+  const port = Number(process.env.CONTROL_PORT ?? 8787);
+  res.json({
+    port,
+    addresses: [...new Set(addresses)],
+    apiPath: '/api',
+    healthPath: '/api/health',
+  });
 });
 // vrne vsebino iz baze sortirano po sort order
 app.get('/api/content', (_req, res) => {

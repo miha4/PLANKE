@@ -91,6 +91,13 @@ export async function searchAdminAppAsync(): Promise<string | null> {
   return null;
 }
 
+export interface NetworkInfo {
+  port: number;
+  addresses: string[];
+  apiPath: string;
+  healthPath: string;
+}
+
 function getResolvedBackendOrigin() {
   const fallback = buildApiBaseCandidates()[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
   return new URL(resolvedApiBaseCache || fallback).origin;
@@ -187,4 +194,8 @@ export async function setDefaultImageAsync(mediaUrl: string): Promise<void> {
 
 export async function removeDefaultImageAsync(): Promise<void> {
   await request('/default-image', { method: 'DELETE' });
+}
+
+export async function getNetworkInfoAsync(): Promise<NetworkInfo> {
+  return request<NetworkInfo>('/network-info');
 }
