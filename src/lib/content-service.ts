@@ -153,6 +153,10 @@ export function isBackendUnavailableError(error: unknown): boolean {
   return error instanceof Error && error.message === BACKEND_UNAVAILABLE_MESSAGE;
 }
 
+export function isBackendUnavailableError(error: unknown): boolean {
+  return error instanceof Error && error.message === BACKEND_UNAVAILABLE_MESSAGE;
+}
+
 export async function addContentItemAsync(item: Omit<ContentItem, 'id' | 'createdAt' | 'order'>): Promise<ContentItem> {
   const created = await request<ContentItem>('/content', { method: 'POST', body: JSON.stringify(item) });
   return { ...created, dataUrl: normalizeMediaUrl(created.dataUrl) ?? '' };
