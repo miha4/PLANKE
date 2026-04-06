@@ -10,18 +10,8 @@ export interface ContentItem {
   order: number;
 }
 
-export interface FtpConfig {
-  host: string;
-  port: number;
-  username: string;
-  password: string;
-  remotePath: string;
-  enabled: boolean;
-}
-
 const STORAGE_KEY = 'ad-player-content';
 const DEFAULT_IMAGE_KEY = 'ad-player-default-image';
-const FTP_CONFIG_KEY = 'ad-player-ftp-config';
 
 export function getActiveContentItems(): ContentItem[] {
   try {
@@ -87,17 +77,4 @@ export function setDefaultImage(dataUrl: string): void {
 
 export function removeDefaultImage(): void {
   localStorage.removeItem(DEFAULT_IMAGE_KEY);
-}
-
-// FTP config
-export function getFtpConfig(): FtpConfig {
-  try {
-    const data = localStorage.getItem(FTP_CONFIG_KEY);
-    if (data) return JSON.parse(data);
-  } catch {}
-  return { host: '', port: 21, username: '', password: '', remotePath: '/ads', enabled: false };
-}
-
-export function saveFtpConfig(config: FtpConfig): void {
-  localStorage.setItem(FTP_CONFIG_KEY, JSON.stringify(config));
 }
