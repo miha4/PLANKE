@@ -1,13 +1,14 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { networkInterfaces } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const mode = process.env.APP_MODE || 'launcher'; // launcher | control | player
+const envMode = process.env.APP_MODE; // launcher | control | player
 const controlUrlFromEnv = process.env.CONTROL_URL;
 const deviceId = process.env.DEVICE_ID || 'player-01';
 const viteDevUrl = process.env.VITE_DEV_SERVER_URL || process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173';
@@ -16,6 +17,41 @@ const localhostControlUrl = `http://127.0.0.1:${controlPort}`;
 
 let backendProcess;
 let resolvedControlUrl = controlUrlFromEnv || localhostControlUrl;
+let mode = 'launcher';
+let mainWindow = null;
+let configPath = '';
+let appConfig = {
+  startupMode: 'launcher', // launcher | admin | player
+  playerFullscreen: true,
+};
+
+function normalizeMode(value) {
+  if (value === 'control') return 'admin';
+  if (value === 'admin' || value === 'player' || value === 'launcher') return value;
+  return 'launcher';
+}
+
+function loadAppConfig() {
+  try {
+    if (!existsSync(configPath)) return;
+    const raw = JSON.parse(readFileSync(configPath, 'utf8'));
+    appConfig = {
+      startupMode: normalizeMode(raw?.startupMode),
+      playerFullscreen: raw?.playerFullscreen !== false,
+    };
+  } catch {
+    // ignore malformed config and continue with defaults
+  }
+}
+
+function saveAppConfig(nextConfig) {
+  appConfig = { ...appConfig, ...nextConfig };
+  try {
+    writeFileSync(configPath, JSON.stringify(appConfig, null, 2), 'utf8');
+  } catch {
+    // non-fatal; app continues with in-memory config
+  }
+}
 
 async function probeControlHealth(baseUrl) {
   const controller = new AbortController();
@@ -100,18 +136,22 @@ function startBackendIfNeeded() {
 }
 
 function createWindow() {
+  const isPlayerFullscreen = mode === 'player' && appConfig.playerFullscreen;
   const win = new BrowserWindow({
     width: 1365,
     height: 768,
     autoHideMenuBar: true,
+    kiosk: isPlayerFullscreen,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: join(__dirname, 'preload.mjs'),
     },
   });
+  mainWindow = win;
 
   if (!app.isPackaged) {
-    if (mode === 'control') {
+    if (mode === 'control' || mode === 'admin') {
       win.loadURL(`${viteDevUrl}/?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
     } else if (mode === 'player') {
       win.loadURL(`${viteDevUrl}/player?deviceId=${encodeURIComponent(deviceId)}&apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
@@ -123,7 +163,7 @@ function createWindow() {
 
   const indexPath = join(__dirname, '..', 'dist', 'index.html');
   const playerPath = join(__dirname, '..', 'dist', 'index.html');
-  if (mode === 'control') {
+  if (mode === 'control' || mode === 'admin') {
     win.loadFile(indexPath, { query: { apiBase: `${resolvedControlUrl}/api` } });
   } else if (mode === 'player') {
     win.loadFile(playerPath, { hash: '/player', query: { deviceId, apiBase: `${resolvedControlUrl}/api` } });
@@ -132,7 +172,64 @@ function createWindow() {
   }
 }
 
+function navigateMainWindow(targetMode) {
+  if (!mainWindow) return;
+  mode = targetMode;
+  mainWindow.setKiosk(mode === 'player' && appConfig.playerFullscreen);
+
+  if (!app.isPackaged) {
+    if (mode === 'player') {
+      mainWindow.loadURL(`${viteDevUrl}/player?deviceId=${encodeURIComponent(deviceId)}&apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
+    } else if (mode === 'admin' || mode === 'control') {
+      mainWindow.loadURL(`${viteDevUrl}/?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
+    } else {
+      mainWindow.loadURL(`${viteDevUrl}/launcher?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
+    }
+    return;
+  }
+
+  const indexPath = join(__dirname, '..', 'dist', 'index.html');
+  if (mode === 'player') {
+    mainWindow.loadFile(indexPath, { hash: '/player', query: { deviceId, apiBase: `${resolvedControlUrl}/api` } });
+  } else if (mode === 'admin' || mode === 'control') {
+    mainWindow.loadFile(indexPath, { query: { apiBase: `${resolvedControlUrl}/api` } });
+  } else {
+    mainWindow.loadFile(indexPath, { hash: '/launcher', query: { apiBase: `${resolvedControlUrl}/api` } });
+  }
+}
+
 app.whenReady().then(async () => {
+  const configDir = app.getPath('userData');
+  mkdirSync(configDir, { recursive: true });
+  configPath = join(configDir, 'app-config.json');
+  loadAppConfig();
+  mode = envMode ? normalizeMode(envMode) : appConfig.startupMode;
+
+  ipcMain.handle('app-config:get', () => ({
+    ...appConfig,
+    mode,
+    resolvedControlUrl,
+    controlPort,
+  }));
+
+  ipcMain.handle('app-config:set', (_event, nextConfig) => {
+    saveAppConfig({
+      startupMode: normalizeMode(nextConfig?.startupMode),
+      playerFullscreen: nextConfig?.playerFullscreen !== false,
+    });
+    navigateMainWindow(appConfig.startupMode);
+    return appConfig;
+  });
+
+  ipcMain.handle('app:open-settings', () => {
+    navigateMainWindow('launcher');
+    return true;
+  });
+
+  globalShortcut.register('CommandOrControl+Shift+F12', () => {
+    navigateMainWindow('launcher');
+  });
+
   startBackendIfNeeded();
   resolvedControlUrl = await resolveControlUrl();
   createWindow();
@@ -146,6 +243,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  globalShortcut.unregisterAll();
   if (backendProcess) {
     backendProcess.kill('SIGTERM');
   }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ContentItem } from '@/lib/content-store';
 import { getActiveContentItemsAsync, getDefaultImageAsync, isBackendUnavailableError } from '@/lib/content-service';
-import { ArrowLeft } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Player = () => {
@@ -95,6 +95,14 @@ const Player = () => {
     controlsTimerRef.current = setTimeout(() => setShowControls(false), 2000);
   };
 
+  const openSettingsMode = () => {
+    if (window.electronApp) {
+      window.electronApp.openSettings().catch(() => {});
+      return;
+    }
+    navigate('/launcher');
+  };
+
   // Show default image when no active content
   if (showDefault) {
     return (
@@ -113,14 +121,11 @@ const Player = () => {
         >
           <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4">
             <button
-              onClick={() => {
-                if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-                navigate('/');
-              }}
+              onClick={openSettingsMode}
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
             >
-              <ArrowLeft className="h-4 w-4" />
-              Nadzorna plošča
+              <Settings className="h-4 w-4" />
+              Nastavitve
             </button>
           </div>
           <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
@@ -135,15 +140,12 @@ const Player = () => {
     return (
       <div ref={containerRef} className="player-screen flex min-h-screen flex-col items-center justify-center gap-4">
         <p className="text-xl font-mono text-player-foreground opacity-60">Ni vsebin za predvajanje</p>
-        <button
-          onClick={() => {
-            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-            navigate('/');
-          }}
-          className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
-        >
-          Nazaj na nadzorno ploščo
-        </button>
+          <button
+            onClick={openSettingsMode}
+            className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+          Nazaj na nastavitve
+          </button>
       </div>
     );
   }
@@ -194,19 +196,21 @@ const Player = () => {
       >
         <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4">
           <button
-            onClick={() => {
-              if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-              navigate('/');
-            }}
+            onClick={openSettingsMode}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Nadzorna plošča
+            <Settings className="h-4 w-4" />
+            Nastavitve
           </button>
         </div>
         <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
           {currentIndex + 1} / {items.length}
         </div>
+        {window.electronApp && (
+          <div className="absolute bottom-4 left-4 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-primary-foreground">
+            Izhod iz kiosk: Ctrl/Cmd + Shift + F12
+          </div>
+        )}
       </div>
     </div>
   );

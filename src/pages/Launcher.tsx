@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MonitorPlay, Settings2, Search, Server } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,14 @@ const Launcher = () => {
   const navigate = useNavigate();
   const [searching, setSearching] = useState(false);
   const [discoveredApiBase, setDiscoveredApiBase] = useState<string | null>(null);
+  const [playerFullscreen, setPlayerFullscreen] = useState(true);
   const manualApiBase = useMemo(() => getManualAdminApiBase(), []);
+
+  useEffect(() => {
+    window.electronApp?.getConfig().then(config => {
+      setPlayerFullscreen(config.playerFullscreen);
+    }).catch(() => {});
+  }, []);
 
   const handleSearch = async () => {
     setSearching(true);
@@ -38,6 +45,22 @@ const Launcher = () => {
     } finally {
       setSearching(false);
     }
+  };
+
+  const openAdmin = async () => {
+    if (window.electronApp) {
+      await window.electronApp.setConfig({ startupMode: 'admin' });
+      return;
+    }
+    navigate('/');
+  };
+
+  const openPlayer = async () => {
+    if (window.electronApp) {
+      await window.electronApp.setConfig({ startupMode: 'player', playerFullscreen });
+      return;
+    }
+    navigate('/player');
   };
 
   return (
@@ -58,7 +81,7 @@ const Launcher = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">Urejanje vsebin in nalaganje slik/videov.</p>
-              <Button className="w-full" onClick={() => navigate('/')}>
+              <Button className="w-full" onClick={openAdmin}>
                 Odpri admin
               </Button>
               <div className="rounded-md border p-3 text-xs space-y-1">
@@ -81,9 +104,17 @@ const Launcher = () => {
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">Predvajanje aktivnih vsebin v celozaslonskem načinu.</p>
               <div className="grid gap-2">
-                <Button className="w-full" onClick={() => navigate('/player')}>
+                <Button className="w-full" onClick={openPlayer}>
                   Odpri player
                 </Button>
+                <label className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>Player fullscreen ob zagonu</span>
+                  <input
+                    type="checkbox"
+                    checked={playerFullscreen}
+                    onChange={e => setPlayerFullscreen(e.target.checked)}
+                  />
+                </label>
                 <Button variant="outline" className="w-full gap-2" onClick={handleSearch} disabled={searching}>
                   <Search className="h-4 w-4" />
                   {searching ? 'Iščem admin app...' : 'Iskanje admin appa'}
