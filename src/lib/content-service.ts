@@ -7,6 +7,9 @@ const REQUEST_TIMEOUT_MS = 1500;
 let resolvedApiBaseCache: string | null = null;
 let resolvingApiBasePromise: Promise<string> | null = null;
 
+export const isBackendUnavailableError = (error: unknown): boolean =>
+  error instanceof Error && error.message === BACKEND_UNAVAILABLE_MESSAGE;
+
 function getCodespacesApiBase(currentUrl: URL): string | null {
   if (!currentUrl.hostname.endsWith('.app.github.dev')) return null;
   const host = currentUrl.hostname.replace(/-\d+\./, `-${CONTROL_PORT}.`);
@@ -147,14 +150,6 @@ export async function uploadMediaAsync(file: File): Promise<string> {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const result = await response.json() as { mediaUrl: string };
   return result.mediaUrl;
-}
-
-export function isBackendUnavailableError(error: unknown): boolean {
-  return error instanceof Error && error.message === BACKEND_UNAVAILABLE_MESSAGE;
-}
-
-export function isBackendUnavailableError(error: unknown): boolean {
-  return error instanceof Error && error.message === BACKEND_UNAVAILABLE_MESSAGE;
 }
 
 export async function addContentItemAsync(item: Omit<ContentItem, 'id' | 'createdAt' | 'order'>): Promise<ContentItem> {
