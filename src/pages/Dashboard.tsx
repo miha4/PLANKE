@@ -19,6 +19,7 @@ import {
   getDefaultImageAsync,
   setDefaultImageAsync,
   removeDefaultImageAsync,
+  isBackendUnavailableError,
 } from '@/lib/content-service';
 import { toast } from 'sonner';
 
@@ -45,12 +46,29 @@ const Dashboard = () => {
   const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  const refresh = async () => setItems(await getAllContentItemsAsync());
+  const refresh = async () => {
+    try {
+      setItems(await getAllContentItemsAsync());
+    } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        toast.error('Backend ni dosegljiv. Zaženi backend in preveri, da je port 8787 forwardan (Codespaces).');
+      } else {
+        toast.error('Napaka pri nalaganju vsebin');
+      }
+      setItems([]);
+    }
+  };
 
   useEffect(() => {
     (async () => {
       await refresh();
-      setDefaultImg(await getDefaultImageAsync());
+      try {
+        setDefaultImg(await getDefaultImageAsync());
+      } catch (error) {
+        if (!isBackendUnavailableError(error)) {
+          toast.error('Napaka pri nalaganju privzete slike');
+        }
+      }
     })();
   }, []);
 
@@ -88,12 +106,22 @@ const Dashboard = () => {
   };
 
   const handleDelete = (id: string, name: string) => {
-    removeContentItemAsync(id).then(refresh);
-    toast.success(`Odstranjeno: ${name}`);
+    removeContentItemAsync(id)
+      .then(refresh)
+      .then(() => toast.success(`Odstranjeno: ${name}`))
+      .catch(error => {
+        if (isBackendUnavailableError(error)) {
+          toast.error('Backend ni dosegljiv. Zaženi backend in preveri, da je port 8787 forwardan (Codespaces).');
+        } else {
+          toast.error('Napaka pri odstranitvi vsebine');
+        }
+      });
   };
 
   const handleUpdate = (id: string, updates: Partial<ContentItem>) => {
-    updateContentItemAsync(id, updates).then(refresh);
+    updateContentItemAsync(id, updates)
+      .then(refresh)
+      .catch(() => toast.error('Napaka pri posodobitvi vsebine'));
   };
 
   const handleDefaultImage = async (files: FileList | null) => {
@@ -103,16 +131,27 @@ const Dashboard = () => {
       toast.error('Samo slike so dovoljene za privzeto sliko');
       return;
     }
-    const mediaUrl = await uploadMediaAsync(file);
-    await setDefaultImageAsync(mediaUrl);
-    setDefaultImg(await getDefaultImageAsync());
-    toast.success('Privzeta slika nastavljena');
+    try {
+      const mediaUrl = await uploadMediaAsync(file);
+      await setDefaultImageAsync(mediaUrl);
+      setDefaultImg(await getDefaultImageAsync());
+      toast.success('Privzeta slika nastavljena');
+    } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        toast.error('Backend ni dosegljiv. Zaženi backend in preveri, da je port 8787 forwardan (Codespaces).');
+      } else {
+        toast.error('Napaka pri nastavitvi privzete slike');
+      }
+    }
   };
 
   const handleRemoveDefault = () => {
-    removeDefaultImageAsync().catch(() => toast.error('Napaka pri odstranitvi privzete slike'));
-    setDefaultImg(null);
-    toast.success('Privzeta slika odstranjena');
+    removeDefaultImageAsync()
+      .then(() => {
+        setDefaultImg(null);
+        toast.success('Privzeta slika odstranjena');
+      })
+      .catch(() => toast.error('Napaka pri odstranitvi privzete slike'));
   };
 
   const isExpired = (endDate: string) => new Date(endDate) < new Date();

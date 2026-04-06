@@ -1,8 +1,26 @@
 import { ContentItem } from './content-store';
 
+const BACKEND_UNAVAILABLE_MESSAGE = 'Backend strežnik ni dosegljiv (preveri, da je zagnan in da je port 8787 odprt/forwardan).';
+const CONTROL_PORT = '8787';
+
+function getCodespacesApiBase(currentUrl: URL): string | null {
+  if (!currentUrl.hostname.endsWith('.app.github.dev')) return null;
+  const host = currentUrl.hostname.replace(/-\d+\./, `-${CONTROL_PORT}.`);
+  return `${currentUrl.protocol}//${host}/api`;
+}
+
 function getApiBase() {
-  const url = new URL(window.location.href);
-  return url.searchParams.get('apiBase') || import.meta.env.VITE_API_BASE || 'http://localhost:8787/api';
+  const currentUrl = new URL(window.location.href);
+  const fromQuery = currentUrl.searchParams.get('apiBase');
+  if (fromQuery) return fromQuery;
+  if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
+
+  const codespacesApiBase = getCodespacesApiBase(currentUrl);
+  if (codespacesApiBase) return codespacesApiBase;
+
+  const isLocalHost = currentUrl.hostname === 'localhost' || currentUrl.hostname === '127.0.0.1';
+  const protocol = isLocalHost ? 'http:' : currentUrl.protocol;
+  return `${protocol}//${currentUrl.hostname}:${CONTROL_PORT}/api`;
 }
 
 function getBackendOrigin() {
@@ -17,10 +35,15 @@ function normalizeMediaUrl(url: string | null | undefined) {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiBase()}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBase()}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      ...init,
+    });
+  } catch {
+    throw new Error(BACKEND_UNAVAILABLE_MESSAGE);
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -37,17 +60,26 @@ export async function getActiveContentItemsAsync(): Promise<ContentItem[]> {
 }
 
 export async function uploadMediaAsync(file: File): Promise<string> {
-  const response = await fetch(`${getApiBase()}/upload`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-      'X-File-Name': encodeURIComponent(file.name),
-    },
-    body: file,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBase()}/upload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+  } catch {
+    throw new Error(BACKEND_UNAVAILABLE_MESSAGE);
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const result = await response.json() as { mediaUrl: string };
   return normalizeMediaUrl(result.mediaUrl) ?? '';
+}
+
+export function isBackendUnavailableError(error: unknown): boolean {
+  return error instanceof Error && error.message === BACKEND_UNAVAILABLE_MESSAGE;
 }
 
 export async function addContentItemAsync(item: Omit<ContentItem, 'id' | 'createdAt' | 'order'>): Promise<ContentItem> {
