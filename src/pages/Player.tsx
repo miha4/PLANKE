@@ -1,14 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ContentItem } from '@/lib/content-store';
-import { getActiveContentItemsAsync, getDefaultImageAsync } from '@/lib/content-service';
-import { ArrowLeft } from 'lucide-react';
+import { getActiveContentItemsAsync, getDefaultImageAsync, isBackendUnavailableError } from '@/lib/content-service';
+import { Settings } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Player = () => {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showControls, setShowControls] = useState(false);
   const [defaultImage, setDefaultImageState] = useState<string | null>(null);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressEnabled, setProgressEnabled] = useState(true);
+  const [progressColor, setProgressColor] = useState('#3b82f6');
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -18,10 +22,26 @@ const Player = () => {
   // Load content and request fullscreen
   useEffect(() => {
     (async () => {
-      const loadedItems = await getActiveContentItemsAsync();
-      setItems(loadedItems);
-      setDefaultImageState(await getDefaultImageAsync());
-      if (loadedItems.length === 0) setCurrentIndex(-1);
+      try {
+        if (window.electronApp) {
+          const cfg = await window.electronApp.getConfig();
+          setProgressEnabled(cfg.progressBarEnabled !== false);
+          setProgressColor(cfg.progressBarColor || '#3b82f6');
+        } else {
+          setProgressEnabled(localStorage.getItem('player-progress-enabled') !== '0');
+          setProgressColor(localStorage.getItem('player-progress-color') || '#3b82f6');
+        }
+        const loadedItems = await getActiveContentItemsAsync();
+        setItems(loadedItems);
+        setDefaultImageState(await getDefaultImageAsync());
+        if (loadedItems.length === 0) setCurrentIndex(-1);
+      } catch (error) {
+        if (isBackendUnavailableError(error)) {
+          toast.error('Backend ni dosegljiv. Zaženi backend in preveri, da je port 8787 forwardan (Codespaces).');
+        }
+        setItems([]);
+        setCurrentIndex(-1);
+      }
     })();
 
     // Request fullscreen
@@ -32,10 +52,15 @@ const Player = () => {
 
     // Periodically refresh active items (every 60s)
     const interval = setInterval(() => {
-      getActiveContentItemsAsync().then(fresh => {
-        setItems(fresh);
-        if (fresh.length === 0) setCurrentIndex(-1);
-      });
+      getActiveContentItemsAsync()
+        .then(fresh => {
+          setItems(fresh);
+          if (fresh.length === 0) setCurrentIndex(-1);
+        })
+        .catch(() => {
+          setItems([]);
+          setCurrentIndex(-1);
+        });
     }, 60000);
 
     return () => {
@@ -58,18 +83,36 @@ const Player = () => {
   // Timer for images
   useEffect(() => {
     if (!currentItem || currentItem.type !== 'image') return;
+    setProgressPercent(0);
+    const totalMs = Math.max(1000, currentItem.displayDurationSeconds * 1000);
+    const startTime = Date.now();
+    const progressTimer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      setProgressPercent(Math.min(100, (elapsed / totalMs) * 100));
+    }, 100);
     timerRef.current = setTimeout(goNext, currentItem.displayDurationSeconds * 1000);
-    return () => clearTimeout(timerRef.current);
+    return () => {
+      clearTimeout(timerRef.current);
+      clearInterval(progressTimer);
+    };
   }, [currentItem, currentIndex, goNext]);
 
   // Video ended handler
   const handleVideoEnded = useCallback(() => {
+    setProgressPercent(100);
     goNext();
   }, [goNext]);
+
+  const handleVideoTimeUpdate = () => {
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    setProgressPercent(Math.min(100, (video.currentTime / video.duration) * 100));
+  };
 
   // Autoplay video
   useEffect(() => {
     if (currentItem?.type === 'video' && videoRef.current) {
+      setProgressPercent(0);
       videoRef.current.play().catch(() => {});
     }
   }, [currentItem, currentIndex]);
@@ -81,16 +124,24 @@ const Player = () => {
     controlsTimerRef.current = setTimeout(() => setShowControls(false), 2000);
   };
 
+  const openSettingsMode = () => {
+    if (window.electronApp) {
+      window.electronApp.openSettings().catch(() => {});
+      return;
+    }
+    navigate('/launcher');
+  };
+
   // Show default image when no active content
   if (showDefault) {
     return (
       <div
         ref={containerRef}
-        className="player-screen relative h-screen w-screen overflow-hidden"
+        className="player-screen fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-black"
         onMouseMove={handleMouseMove}
         style={{ cursor: showControls ? 'default' : 'none' }}
       >
-        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-contain" />
+        <img src={defaultImage} alt="Privzeta slika" className="h-full w-full object-contain bg-black" />
         {/* Controls overlay */}
         <div
           className={`absolute inset-0 transition-opacity duration-300 ${
@@ -99,14 +150,11 @@ const Player = () => {
         >
           <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4">
             <button
-              onClick={() => {
-                if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-                navigate('/');
-              }}
+              onClick={openSettingsMode}
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
             >
-              <ArrowLeft className="h-4 w-4" />
-              Nadzorna plošča
+              <Settings className="h-4 w-4" />
+              Nastavitve
             </button>
           </div>
           <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
@@ -121,15 +169,12 @@ const Player = () => {
     return (
       <div ref={containerRef} className="player-screen flex min-h-screen flex-col items-center justify-center gap-4">
         <p className="text-xl font-mono text-player-foreground opacity-60">Ni vsebin za predvajanje</p>
-        <button
-          onClick={() => {
-            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-            navigate('/');
-          }}
-          className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
-        >
-          Nazaj na nadzorno ploščo
-        </button>
+          <button
+            onClick={openSettingsMode}
+            className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+          Nazaj na nastavitve
+          </button>
       </div>
     );
   }
@@ -137,7 +182,7 @@ const Player = () => {
   return (
     <div
       ref={containerRef}
-      className="player-screen relative h-screen w-screen overflow-hidden"
+      className="player-screen fixed inset-0 h-[100dvh] w-screen overflow-hidden bg-black"
       onMouseMove={handleMouseMove}
       style={{ cursor: showControls ? 'default' : 'none' }}
     >
@@ -147,26 +192,28 @@ const Player = () => {
           key={currentItem.id + currentIndex}
           src={currentItem.dataUrl}
           alt={currentItem.name}
-          className="h-full w-full object-contain animate-fade-in"
+          className="h-full w-full object-contain bg-black animate-fade-in"
         />
       ) : currentItem?.type === 'video' ? (
         <video
           key={currentItem.id + currentIndex}
           ref={videoRef}
           src={currentItem.dataUrl}
-          className="h-full w-full object-contain"
+          className="h-full w-full object-contain bg-black"
           muted
           onEnded={handleVideoEnded}
+          onTimeUpdate={handleVideoTimeUpdate}
         />
       ) : null}
 
       {/* Progress bar */}
-      {currentItem?.type === 'image' && (
+      {progressEnabled && currentItem && (
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-foreground/10">
           <div
             className="h-full bg-primary transition-none"
             style={{
-              animation: `progress-bar ${currentItem.displayDurationSeconds}s linear forwards`,
+              width: `${progressPercent}%`,
+              backgroundColor: progressColor,
             }}
           />
         </div>
@@ -180,19 +227,21 @@ const Player = () => {
       >
         <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/50 to-transparent p-4">
           <button
-            onClick={() => {
-              if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-              navigate('/');
-            }}
+            onClick={openSettingsMode}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Nadzorna plošča
+            <Settings className="h-4 w-4" />
+            Nastavitve
           </button>
         </div>
         <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
           {currentIndex + 1} / {items.length}
         </div>
+        {window.electronApp && (
+          <div className="absolute bottom-4 left-4 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-primary-foreground">
+            Izhod iz kiosk: Ctrl/Cmd + Shift + F12
+          </div>
+        )}
       </div>
     </div>
   );
