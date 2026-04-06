@@ -76,15 +76,6 @@ export function updateContentItem(id: string, updates: Partial<ContentItem>): vo
   saveContentItems(items);
 }
 
-export function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 // Default image
 export function getDefaultImage(): string | null {
   return localStorage.getItem(DEFAULT_IMAGE_KEY);

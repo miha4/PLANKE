@@ -12,11 +12,11 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import {
   ContentItem,
-  fileToDataUrl,
   FtpConfig,
 } from '@/lib/content-store';
 import {
   getAllContentItemsAsync,
+  uploadMediaAsync,
   addContentItemAsync,
   removeContentItemAsync,
   updateContentItemAsync,
@@ -73,11 +73,11 @@ const Dashboard = () => {
         continue;
       }
       try {
-        const dataUrl = await fileToDataUrl(file);
+        const mediaUrl = await uploadMediaAsync(file);
         await addContentItemAsync({
           name: file.name,
           type: isImage ? 'image' : 'video',
-          dataUrl,
+          dataUrl: mediaUrl,
           displayDurationSeconds: isImage ? displaySeconds : 0,
           startDate: new Date(startDate).toISOString(),
           endDate: new Date(endDate + 'T23:59:59').toISOString(),
@@ -112,21 +112,22 @@ const Dashboard = () => {
       toast.error('Samo slike so dovoljene za privzeto sliko');
       return;
     }
-    const dataUrl = await fileToDataUrl(file);
-    await setDefaultImageAsync(dataUrl);
-    setDefaultImg(dataUrl);
+    const mediaUrl = await uploadMediaAsync(file);
+    await setDefaultImageAsync(mediaUrl);
+    setDefaultImg(await getDefaultImageAsync());
     toast.success('Privzeta slika nastavljena');
   };
 
   const handleRemoveDefault = () => {
-    removeDefaultImageAsync();
+    removeDefaultImageAsync().catch(() => toast.error('Napaka pri odstranitvi privzete slike'));
     setDefaultImg(null);
     toast.success('Privzeta slika odstranjena');
   };
 
   const handleSaveFtp = () => {
-    saveFtpConfigAsync(ftpConfig);
-    toast.success('FTP nastavitve shranjene');
+    saveFtpConfigAsync(ftpConfig)
+      .then(() => toast.success('FTP nastavitve shranjene'))
+      .catch(() => toast.error('Napaka pri shranjevanju FTP nastavitev'));
   };
 
   const isExpired = (endDate: string) => new Date(endDate) < new Date();
