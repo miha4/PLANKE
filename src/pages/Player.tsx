@@ -17,6 +17,7 @@ const Player = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const progressAnimationRef = useRef<number>();
   const navigate = useNavigate();
 
   // Load content and request fullscreen
@@ -85,15 +86,19 @@ const Player = () => {
     if (!currentItem || currentItem.type !== 'image') return;
     setProgressPercent(0);
     const totalMs = Math.max(1000, currentItem.displayDurationSeconds * 1000);
-    const startTime = Date.now();
-    const progressTimer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
+    const startTime = performance.now();
+
+    const updateProgress = (now: number) => {
+      const elapsed = now - startTime;
       setProgressPercent(Math.min(100, (elapsed / totalMs) * 100));
-    }, 100);
+      progressAnimationRef.current = requestAnimationFrame(updateProgress);
+    };
+
+    progressAnimationRef.current = requestAnimationFrame(updateProgress);
     timerRef.current = setTimeout(goNext, currentItem.displayDurationSeconds * 1000);
     return () => {
       clearTimeout(timerRef.current);
-      clearInterval(progressTimer);
+      if (progressAnimationRef.current) cancelAnimationFrame(progressAnimationRef.current);
     };
   }, [currentItem, currentIndex, goNext]);
 
@@ -114,7 +119,20 @@ const Player = () => {
     if (currentItem?.type === 'video' && videoRef.current) {
       setProgressPercent(0);
       videoRef.current.play().catch(() => {});
+
+      const updateVideoProgress = () => {
+        const video = videoRef.current;
+        if (video && Number.isFinite(video.duration) && video.duration > 0) {
+          setProgressPercent(Math.min(100, (video.currentTime / video.duration) * 100));
+        }
+        progressAnimationRef.current = requestAnimationFrame(updateVideoProgress);
+      };
+      progressAnimationRef.current = requestAnimationFrame(updateVideoProgress);
     }
+
+    return () => {
+      if (progressAnimationRef.current) cancelAnimationFrame(progressAnimationRef.current);
+    };
   }, [currentItem, currentIndex]);
 
   // Show controls on mouse move
