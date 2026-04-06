@@ -1,29 +1,133 @@
-import {
-  ContentItem,
-  FtpConfig,
-} from './content-store';
+import { ContentItem } from './content-store';
 
-function getApiBase() {
-  const url = new URL(window.location.href);
-  return url.searchParams.get('apiBase') || import.meta.env.VITE_API_BASE || 'http://localhost:8787/api';
+const BACKEND_UNAVAILABLE_MESSAGE = 'Backend strežnik ni dosegljiv (preveri, da je zagnan in da je port 8787 odprt/forwardan).';
+const CONTROL_PORT = '8787';
+const REQUEST_TIMEOUT_MS = 1500;
+
+let resolvedApiBaseCache: string | null = null;
+let resolvingApiBasePromise: Promise<string> | null = null;
+
+export const isBackendUnavailableError = (error: unknown): boolean =>
+  error instanceof Error && error.message === BACKEND_UNAVAILABLE_MESSAGE;
+
+function getCodespacesApiBase(currentUrl: URL): string | null {
+  if (!currentUrl.hostname.endsWith('.app.github.dev')) return null;
+  const host = currentUrl.hostname.replace(/-\d+\./, `-${CONTROL_PORT}.`);
+  return `${currentUrl.protocol}//${host}/api`;
 }
 
-function getBackendOrigin() {
-  return new URL(getApiBase()).origin;
+function dedupe(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter(Boolean) as string[])];
+}
+
+function buildApiBaseCandidates() {
+  const currentUrl = new URL(window.location.href);
+  const fromQuery = currentUrl.searchParams.get('apiBase');
+  const codespacesApiBase = getCodespacesApiBase(currentUrl);
+  const isLocalHost = currentUrl.hostname === 'localhost' || currentUrl.hostname === '127.0.0.1';
+  const protocol = isLocalHost ? 'http:' : currentUrl.protocol;
+
+  const sameOriginApi = currentUrl.protocol.startsWith('http')
+    ? `${currentUrl.origin}/api`
+    : null;
+
+  return dedupe([
+    fromQuery,
+    import.meta.env.VITE_API_BASE,
+    codespacesApiBase,
+    sameOriginApi,
+    `${protocol}//${currentUrl.hostname}:${CONTROL_PORT}/api`,
+    `http://127.0.0.1:${CONTROL_PORT}/api`,
+    `http://localhost:${CONTROL_PORT}/api`,
+  ]);
+}
+
+async function probeApiBase(apiBase: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${apiBase}/health`, { signal: controller.signal });
+    if (!response.ok) return false;
+    const body = await response.json().catch(() => null);
+    return Boolean(body?.ok);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveApiBase(): Promise<string> {
+  if (resolvedApiBaseCache) return resolvedApiBaseCache;
+  if (resolvingApiBasePromise) return resolvingApiBasePromise;
+
+  const candidates = buildApiBaseCandidates();
+  resolvingApiBasePromise = (async () => {
+    for (const candidate of candidates) {
+      if (await probeApiBase(candidate)) {
+        resolvedApiBaseCache = candidate;
+        return candidate;
+      }
+    }
+    resolvedApiBaseCache = candidates[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
+    return resolvedApiBaseCache;
+  })();
+
+  try {
+    return await resolvingApiBasePromise;
+  } finally {
+    resolvingApiBasePromise = null;
+  }
+}
+
+export async function searchAdminAppAsync(): Promise<string | null> {
+  const candidates = buildApiBaseCandidates();
+  for (const candidate of candidates) {
+    if (await probeApiBase(candidate)) {
+      resolvedApiBaseCache = candidate;
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getResolvedBackendOrigin() {
+  const fallback = buildApiBaseCandidates()[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
+  return new URL(resolvedApiBaseCache || fallback).origin;
 }
 
 function normalizeMediaUrl(url: string | null | undefined) {
   if (!url) return null;
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
-  if (url.startsWith('/')) return `${getBackendOrigin()}${url}`;
-  return `${getBackendOrigin()}/${url}`;
+  if (url.startsWith('data:')) return url;
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      const parsed = new URL(url);
+      const backendOrigin = new URL(getResolvedBackendOrigin());
+      const isLoopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+      const shouldRewriteLoopback = isLoopback && backendOrigin.hostname !== 'localhost' && backendOrigin.hostname !== '127.0.0.1';
+      if (shouldRewriteLoopback) {
+        return `${backendOrigin.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } catch {
+      return url;
+    }
+    return url;
+  }
+  if (url.startsWith('/')) return `${getResolvedBackendOrigin()}${url}`;
+  return `${getResolvedBackendOrigin()}/${url}`;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiBase()}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-    ...init,
-  });
+  let response: Response;
+  try {
+    const apiBase = await resolveApiBase();
+    response = await fetch(`${apiBase}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      ...init,
+    });
+  } catch {
+    throw new Error(BACKEND_UNAVAILABLE_MESSAGE);
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -40,17 +144,23 @@ export async function getActiveContentItemsAsync(): Promise<ContentItem[]> {
 }
 
 export async function uploadMediaAsync(file: File): Promise<string> {
-  const response = await fetch(`${getApiBase()}/upload`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-      'X-File-Name': encodeURIComponent(file.name),
-    },
-    body: file,
-  });
+  let response: Response;
+  try {
+    const apiBase = await resolveApiBase();
+    response = await fetch(`${apiBase}/upload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+  } catch {
+    throw new Error(BACKEND_UNAVAILABLE_MESSAGE);
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const result = await response.json() as { mediaUrl: string };
-  return normalizeMediaUrl(result.mediaUrl) ?? '';
+  return result.mediaUrl;
 }
 
 export async function addContentItemAsync(item: Omit<ContentItem, 'id' | 'createdAt' | 'order'>): Promise<ContentItem> {
@@ -77,12 +187,4 @@ export async function setDefaultImageAsync(mediaUrl: string): Promise<void> {
 
 export async function removeDefaultImageAsync(): Promise<void> {
   await request('/default-image', { method: 'DELETE' });
-}
-
-export async function getFtpConfigAsync(): Promise<FtpConfig> {
-  return request<FtpConfig>('/ftp-config');
-}
-
-export async function saveFtpConfigAsync(config: FtpConfig): Promise<void> {
-  await request('/ftp-config', { method: 'PUT', body: JSON.stringify(config) });
 }
