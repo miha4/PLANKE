@@ -1,7 +1,7 @@
 // uvozi modulov
 import express from 'express'; // glavni web streznik
 import cors from 'cors'; // dovoli klice iz frontenda na drugem naslovu/portu
-import { mkdirSync, writeFileSync } from 'node:fs'; // ustvarjanje map in zapis datotek
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'; // ustvarjanje map in zapis datotek
 import { dirname, join } from 'node:path'; // delo s potmi do map/datotek
 import { fileURLToPath } from 'node:url'; // pretvori import.meta.url v pravo datotecno pot
 import { DatabaseSync } from 'node:sqlite'; // SQLite baza
@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS content_items (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   type TEXT NOT NULL CHECK(type IN ('image','video')),
+  channel_id TEXT NOT NULL DEFAULT 'A',
   data_url TEXT NOT NULL,
   display_duration_seconds INTEGER NOT NULL DEFAULT 10,
   start_date TEXT NOT NULL,
@@ -37,6 +38,11 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 `);
+
+const contentTableColumns = db.prepare('PRAGMA table_info(content_items)').all();
+if (!contentTableColumns.some(col => col.name === 'channel_id')) {
+  db.exec("ALTER TABLE content_items ADD COLUMN channel_id TEXT NOT NULL DEFAULT 'A';");
+}
 
 // ustvarjanje express appa:  
 const app = express();
@@ -53,6 +59,10 @@ app.use('/media', express.static(mediaDir, {
 //2026-04-06T10:15:30.123Z
 function nowIso() {
   return new Date().toISOString();
+}
+
+function normalizeChannelId(raw) {
+  return raw === 'A' || raw === 'B' || raw === 'C' ? raw : 'A';
 }
 
 //počisti ime datoteke
@@ -171,6 +181,7 @@ app.get('/api/content', (_req, res) => {
     id: r.id,
     name: r.name,
     type: r.type,
+    channelId: normalizeChannelId(r.channel_id),
     dataUrl: toPublicMediaUrl(_req, r.data_url),
     displayDurationSeconds: r.display_duration_seconds,
     startDate: r.start_date,
@@ -183,11 +194,15 @@ app.get('/api/content', (_req, res) => {
 //endpoint, ki ga uporablja player: vrne samo aktivne vsebine
 app.get('/api/content/active', (_req, res) => {
   const now = nowIso();
-  const rows = db.prepare('SELECT * FROM content_items WHERE start_date <= ? AND end_date > ? ORDER BY sort_order ASC').all(now, now);
+  const channelId = _req.query.channel ? normalizeChannelId(_req.query.channel) : null;
+  const rows = channelId
+    ? db.prepare('SELECT * FROM content_items WHERE channel_id = ? AND start_date <= ? AND end_date > ? ORDER BY sort_order ASC').all(channelId, now, now)
+    : db.prepare('SELECT * FROM content_items WHERE start_date <= ? AND end_date > ? ORDER BY sort_order ASC').all(now, now);
   res.json(rows.map(r => ({
     id: r.id,
     name: r.name,
     type: r.type,
+    channelId: normalizeChannelId(r.channel_id),
     dataUrl: toPublicMediaUrl(_req, r.data_url),
     displayDurationSeconds: r.display_duration_seconds,
     startDate: r.start_date,
@@ -207,11 +222,12 @@ app.post('/api/content', (req, res) => {
   const sortOrder = Number(countRow?.count ?? 0);
   const storedMedia = body.mediaUrl || saveDataUrlAsMedia(body.dataUrl, body.name);
   db.prepare(`INSERT INTO content_items
-    (id, name, type, data_url, display_duration_seconds, start_date, end_date, created_at, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    (id, name, type, channel_id, data_url, display_duration_seconds, start_date, end_date, created_at, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id,
     body.name,
     body.type,
+    normalizeChannelId(body.channelId),
     storedMedia,
     body.displayDurationSeconds ?? 10,
     body.startDate,
@@ -223,6 +239,7 @@ app.post('/api/content', (req, res) => {
     id,
     name: body.name,
     type: body.type,
+    channelId: normalizeChannelId(body.channelId),
     dataUrl: toPublicMediaUrl(req, storedMedia),
     displayDurationSeconds: body.displayDurationSeconds ?? 10,
     startDate: body.startDate,
@@ -247,6 +264,7 @@ app.patch('/api/content/:id', (req, res) => {
   const merged = {
     name: req.body.name ?? row.name,
     type: req.body.type ?? row.type,
+    channel_id: normalizeChannelId(req.body.channelId ?? row.channel_id),
     data_url: nextMedia,
     display_duration_seconds: req.body.displayDurationSeconds ?? row.display_duration_seconds,
     start_date: req.body.startDate ?? row.start_date,
@@ -256,10 +274,11 @@ app.patch('/api/content/:id', (req, res) => {
 
   //update v bazi
   db.prepare(`UPDATE content_items
-    SET name=?, type=?, data_url=?, display_duration_seconds=?, start_date=?, end_date=?, sort_order=?
+    SET name=?, type=?, channel_id=?, data_url=?, display_duration_seconds=?, start_date=?, end_date=?, sort_order=?
     WHERE id=?`).run(
     merged.name,
     merged.type,
+    merged.channel_id,
     merged.data_url,
     merged.display_duration_seconds,
     merged.start_date,
@@ -314,6 +333,38 @@ app.delete('/api/default-image', (_req, res) => {
 });
 
 // FTP endpointi so odstranjeni, ker aplikacija uporablja lokalni upload in media storage.
+
+
+const frontendDistDir = join(__dirname, 'dist');
+const frontendIndexFile = join(frontendDistDir, 'index.html');
+
+function extractSearchFromOriginalUrl(originalUrl = '') {
+  const idx = originalUrl.indexOf('?');
+  return idx >= 0 ? originalUrl.slice(idx) : '';
+}
+
+function setupFrontendRoutes() {
+  if (!existsSync(frontendIndexFile)) {
+    console.warn('[backend] dist/index.html not found. Frontend routes (/player, /admin, /launcher) will return 404 until you run npm run build.');
+    return;
+  }
+
+  // 1) statični frontend build (dist/assets, favicon, ...)
+  app.use(express.static(frontendDistDir, { index: false }));
+
+  // 2) lepši URL-ji za HashRouter: /player -> /#/player
+  app.get(['/player', '/admin', '/launcher'], (req, res) => {
+    const search = extractSearchFromOriginalUrl(req.originalUrl);
+    res.redirect(`/#${req.path}${search}`);
+  });
+
+  // 3) catch-all fallback za vse ne-API poti
+  app.get(/^(?!\/api(?:\/|$)).*/, (_req, res) => {
+    res.sendFile(frontendIndexFile);
+  });
+}
+
+setupFrontendRoutes();
 
 // zagon strežnika
 const port = Number(process.env.CONTROL_PORT ?? 8787);
