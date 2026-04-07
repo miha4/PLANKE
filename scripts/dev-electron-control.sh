@@ -13,4 +13,4 @@ until curl -sSf http://127.0.0.1:5173 >/dev/null; do
   sleep 1
 done
 
-APP_MODE=control CONTROL_URL=http://127.0.0.1:8787 VITE_DEV_SERVER_URL=http://127.0.0.1:5173 npm run electron
+USE_DEV_SERVER=1 APP_MODE=control CONTROL_URL=http://127.0.0.1:8787 VITE_DEV_SERVER_URL=http://127.0.0.1:5173 npm run electron
