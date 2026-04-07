@@ -4,6 +4,7 @@ import { ContentItem } from '@/lib/content-store';
 import { getActiveContentItemsAsync, getDefaultImageAsync, isBackendUnavailableError } from '@/lib/content-service';
 import { Settings } from 'lucide-react';
 import { toast } from 'sonner';
+import { getRuntimeConfig } from '@/lib/runtime-config';
 
 const Player = () => {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -19,6 +20,7 @@ const Player = () => {
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const progressAnimationRef = useRef<number>();
   const navigate = useNavigate();
+  const runtimeDeviceId = getRuntimeConfig().deviceId;
 
   // Load content and request fullscreen
   useEffect(() => {
@@ -254,6 +256,7 @@ const Player = () => {
         </div>
         <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
           {currentIndex + 1} / {items.length}
+          {runtimeDeviceId ? ` · ${runtimeDeviceId}` : ''}
         </div>
         {window.electronApp && (
           <div className="absolute bottom-4 left-4 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-primary-foreground">

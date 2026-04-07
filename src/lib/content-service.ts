@@ -1,4 +1,5 @@
 import { ContentItem } from './content-store';
+import { getRuntimeConfig } from './runtime-config';
 
 const BACKEND_UNAVAILABLE_MESSAGE = 'Backend strežnik ni dosegljiv (preveri, da je zagnan in da je port 8787 odprt/forwardan).';
 const CONTROL_PORT = '8787';
@@ -22,21 +23,23 @@ function dedupe(values: Array<string | null | undefined>): string[] {
 
 function buildApiBaseCandidates() {
   const currentUrl = new URL(window.location.href);
-  const fromQuery = currentUrl.searchParams.get('apiBase');
+  const { apiBase: runtimeApiBase } = getRuntimeConfig();
   const codespacesApiBase = getCodespacesApiBase(currentUrl);
   const isLocalHost = currentUrl.hostname === 'localhost' || currentUrl.hostname === '127.0.0.1';
-  const protocol = isLocalHost ? 'http:' : currentUrl.protocol;
+  const isHttpProtocol = currentUrl.protocol === 'http:' || currentUrl.protocol === 'https:';
+  const protocol = isHttpProtocol ? (isLocalHost ? 'http:' : currentUrl.protocol) : 'http:';
+  const hostname = currentUrl.hostname || '127.0.0.1';
 
-  const sameOriginApi = currentUrl.protocol.startsWith('http')
+  const sameOriginApi = isHttpProtocol
     ? `${currentUrl.origin}/api`
     : null;
 
   return dedupe([
-    fromQuery,
+    runtimeApiBase,
     import.meta.env.VITE_API_BASE,
     codespacesApiBase,
     sameOriginApi,
-    `${protocol}//${currentUrl.hostname}:${CONTROL_PORT}/api`,
+    `${protocol}//${hostname}:${CONTROL_PORT}/api`,
     `http://127.0.0.1:${CONTROL_PORT}/api`,
     `http://localhost:${CONTROL_PORT}/api`,
   ]);
@@ -94,9 +97,13 @@ async function resolveApiBase(): Promise<string> {
   }
 }
 
-export async function searchAdminAppAsync(): Promise<string | null> {
+export async function searchAdminAppAsync(excludeApiBase?: string): Promise<string | null> {
+  const normalizedExclude = excludeApiBase
+    ? excludeApiBase.replace(/\/$/, '').replace(/\/api$/, '/api')
+    : null;
   const candidates = buildApiBaseCandidates();
   for (const candidate of candidates) {
+    if (normalizedExclude && candidate === normalizedExclude) continue;
     if (await probeApiBase(candidate)) {
       resolvedApiBaseCache = candidate;
       return candidate;
