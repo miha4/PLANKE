@@ -194,6 +194,54 @@ function logWindowFailure(win) {
       console.error(`[renderer:${level}] ${message} (${sourceId}:${line})`);
     }
   });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[electron] Render process gone:', details);
+  });
+
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      console.error(`[renderer:${level}] ${message} (${sourceId}:${line})`);
+    }
+  });
+}
+
+function loadFrontend(win, targetMode) {
+  const route = getRouteForMode(targetMode);
+  const query = buildRouteQuery(targetMode);
+
+  if (useDevServer) {
+    const devUrl = new URL(viteDevUrl);
+    devUrl.hash = route;
+    for (const [key, value] of Object.entries(query)) {
+      devUrl.searchParams.set(key, value);
+    }
+    console.log('[electron] Loading frontend from dev server:', devUrl.toString());
+    return win.loadURL(devUrl.toString());
+  }
+
+  const indexPath = join(__dirname, '..', 'dist', 'index.html');
+  console.log('[electron] Loading frontend from file:', indexPath, route, query);
+  return win.loadFile(indexPath, { hash: route, query });
+}
+
+function loadFrontend(win, targetMode) {
+  const route = getRouteForMode(targetMode);
+  const query = buildRouteQuery(targetMode);
+
+  if (useDevServer) {
+    const devUrl = new URL(viteDevUrl);
+    devUrl.hash = route;
+    for (const [key, value] of Object.entries(query)) {
+      devUrl.searchParams.set(key, value);
+    }
+    console.log('[electron] Loading frontend from dev server:', devUrl.toString());
+    return win.loadURL(devUrl.toString());
+  }
+
+  const indexPath = join(__dirname, '..', 'dist', 'index.html');
+  console.log('[electron] Loading frontend from file:', indexPath, route, query);
+  return win.loadFile(indexPath, { hash: route, query });
 }
 
 function loadFrontend(win, targetMode) {
