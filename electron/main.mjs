@@ -194,6 +194,66 @@ function logWindowFailure(win) {
       console.error(`[renderer:${level}] ${message} (${sourceId}:${line})`);
     }
   });
+
+  backendProcess.on('error', (error) => {
+    console.error('[electron] Backend start failed:', error);
+  });
+
+  backendProcess.on('exit', (code, signal) => {
+    if (!app.isQuitting) {
+      console.error(`[electron] Backend exited unexpectedly (code=${code}, signal=${signal})`);
+    }
+  });
+}
+
+function getRouteForMode(targetMode) {
+  if (targetMode === 'player') return '/player';
+  if (targetMode === 'admin' || targetMode === 'control') return '/admin';
+  return '/launcher';
+}
+
+function buildRouteQuery(targetMode) {
+  const query = { apiBase: `${resolvedControlUrl}/api` };
+  if (targetMode === 'player') {
+    return { ...query, deviceId };
+  }
+  return query;
+}
+
+function logWindowFailure(win) {
+  win.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.error('[electron] Frontend load failed:', { code, description, validatedURL });
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[electron] Render process gone:', details);
+  });
+
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      console.error(`[renderer:${level}] ${message} (${sourceId}:${line})`);
+    }
+  });
+}
+
+function loadFrontend(win, targetMode) {
+  const route = getRouteForMode(targetMode);
+  const query = buildRouteQuery(targetMode);
+
+  if (useDevServer) {
+    const devUrl = new URL(viteDevUrl);
+    devUrl.hash = route;
+    for (const [key, value] of Object.entries(query)) {
+      devUrl.searchParams.set(key, value);
+    }
+    console.log('[electron] Loading frontend from dev server:', devUrl.toString());
+    return win.loadURL(devUrl.toString());
+  }
+
+  const indexPath = join(__dirname, '..', 'dist', 'index.html');
+  console.log('[electron] Loading frontend from file:', indexPath, route, query);
+  return win.loadFile(indexPath, { hash: route, query });
 }
 
 function loadFrontend(win, targetMode) {
