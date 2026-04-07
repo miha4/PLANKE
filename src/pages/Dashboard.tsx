@@ -47,6 +47,7 @@ const Dashboard = () => {
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const [storageDir, setStorageDir] = useState<string>('');
   const [selectedChannel, setSelectedChannel] = useState<'A' | 'B' | 'C'>('A');
+  const [previewIndexByChannel, setPreviewIndexByChannel] = useState<Record<'A' | 'B' | 'C', number>>({ A: 0, B: 0, C: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -177,6 +178,19 @@ const Dashboard = () => {
       await refresh();
     }
   };
+
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPreviewIndexByChannel((prev) => ({
+        A: prev.A + 1,
+        B: prev.B + 1,
+        C: prev.C + 1,
+      }));
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background p-6 md:p-10">
@@ -395,13 +409,26 @@ const Dashboard = () => {
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center justify-between text-lg">
                     <span>Kanal {channelId}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate(`/player?channel=${channelId}`)}
-                    >
-                      Predogled kanala
-                    </Button>
+                    {(() => {
+                      const previewItems = channelItems.filter(item => !isExpired(item.endDate));
+                      const previewItem = previewItems.length > 0
+                        ? previewItems[previewIndexByChannel[channelId] % previewItems.length]
+                        : null;
+
+                      return (
+                        <div className="h-16 w-28 overflow-hidden rounded-md border bg-muted">
+                          {previewItem ? (
+                            previewItem.type === 'image' ? (
+                              <img src={previewItem.dataUrl} alt={previewItem.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <video src={previewItem.dataUrl} className="h-full w-full object-cover" muted autoPlay loop playsInline />
+                            )
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">Brez predogleda</div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">

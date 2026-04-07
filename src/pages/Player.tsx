@@ -174,7 +174,7 @@ const Player = () => {
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
             >
               <Settings className="h-4 w-4" />
-              Nastavitve
+              Nazaj na izbor
             </button>
           </div>
           <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
@@ -193,7 +193,7 @@ const Player = () => {
             onClick={openSettingsMode}
             className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
           >
-          Nazaj na nastavitve
+          Nazaj na izbor
           </button>
       </div>
     );
@@ -251,7 +251,7 @@ const Player = () => {
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
           >
             <Settings className="h-4 w-4" />
-            Nastavitve
+            Nazaj na izbor
           </button>
         </div>
         <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
