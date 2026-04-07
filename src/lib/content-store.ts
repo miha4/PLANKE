@@ -2,6 +2,7 @@ export interface ContentItem {
   id: string;
   name: string;
   type: 'image' | 'video';
+  channelId: 'A' | 'B' | 'C';
   dataUrl: string;
   displayDurationSeconds: number; // for images, default 10
   startDate: string; // ISO date string — when to start showing

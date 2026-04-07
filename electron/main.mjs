@@ -28,6 +28,7 @@ let appConfig = {
   progressBarEnabled: true,
   progressBarColor: '#3b82f6',
   storageDir: '',
+  playerChannel: 'A',
 };
 
 function normalizeMode(value) {
@@ -47,6 +48,7 @@ function loadAppConfig() {
       progressBarEnabled: raw?.progressBarEnabled !== false,
       progressBarColor: String(raw?.progressBarColor ?? '#3b82f6'),
       storageDir: String(raw?.storageDir ?? ''),
+      playerChannel: raw?.playerChannel === 'B' || raw?.playerChannel === 'C' ? raw.playerChannel : 'A',
     };
   } catch {
     console.error('[electron] Failed to parse app config:', configPath);
@@ -189,7 +191,7 @@ function getRouteForMode(targetMode) {
 function buildRouteQuery(targetMode) {
   const query = { apiBase: `${resolvedControlUrl}/api` };
   if (targetMode === 'player') {
-    return { ...query, deviceId };
+    return { ...query, deviceId, channel: appConfig.playerChannel || 'A' };
   }
   return query;
 }
@@ -277,6 +279,7 @@ app.whenReady().then(async () => {
     controlPort,
     preferredApiBase: appConfig.preferredApiBase,
     storageDir: appConfig.storageDir,
+    playerChannel: appConfig.playerChannel,
   }));
 
   ipcMain.handle('app-config:set', (_event, nextConfig) => {
@@ -288,6 +291,7 @@ app.whenReady().then(async () => {
       progressBarEnabled: nextConfig?.progressBarEnabled !== false,
       progressBarColor: String(nextConfig?.progressBarColor ?? appConfig.progressBarColor ?? '#3b82f6'),
       storageDir: String(nextConfig?.storageDir ?? appConfig.storageDir ?? ''),
+      playerChannel: nextConfig?.playerChannel === 'B' || nextConfig?.playerChannel === 'C' ? nextConfig.playerChannel : 'A',
     });
     if (appConfig.storageDir !== previousStorageDir) {
       restartBackendIfNeeded();

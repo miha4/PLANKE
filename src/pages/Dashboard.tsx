@@ -46,6 +46,7 @@ const Dashboard = () => {
   const [defaultImg, setDefaultImg] = useState<string | null>(null);
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const [storageDir, setStorageDir] = useState<string>('');
+  const [selectedChannel, setSelectedChannel] = useState<'A' | 'B' | 'C'>('A');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -96,6 +97,7 @@ const Dashboard = () => {
           name: file.name,
           type: isImage ? 'image' : 'video',
           dataUrl: mediaUrl,
+          channelId: selectedChannel,
           displayDurationSeconds: isImage ? displaySeconds : 0,
           startDate: new Date(startDate).toISOString(),
           endDate: new Date(endDate + 'T23:59:59').toISOString(),
@@ -106,7 +108,7 @@ const Dashboard = () => {
       }
     }
     await refresh();
-  }, [startDate, endDate, displaySeconds]);
+  }, [startDate, endDate, displaySeconds, selectedChannel]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -230,8 +232,7 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {window.electronApp && (
-          <Card>
+        <Card>
             <CardHeader>
               <CardTitle className="text-lg">Shranjevanje datotek</CardTitle>
             </CardHeader>
@@ -242,13 +243,18 @@ const Dashboard = () => {
               <div className="rounded-md border p-3 break-all">
                 <strong>Trenutna mapa:</strong> {storageDir || '(privzeta aplikacijska mapa)'}
               </div>
-              <Button variant="outline" onClick={pickStorageDir} className="gap-2">
-                <FolderOpen className="h-4 w-4" />
-                Izberi mapo za podatke
-              </Button>
+              {window.electronApp ? (
+                <Button variant="outline" onClick={pickStorageDir} className="gap-2">
+                  <FolderOpen className="h-4 w-4" />
+                  Izberi mapo za podatke
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Izbira mape je na voljo v Electron aplikaciji (ne v navadnem browserju).
+                </p>
+              )}
             </CardContent>
           </Card>
-        )}
 
         {/* Default Image */}
         <Card>
@@ -341,6 +347,18 @@ const Dashboard = () => {
                 className="w-28"
               />
             </div>
+            <div className="space-y-2">
+              <Label>Kanal za nove vsebine</Label>
+              <select
+                className="h-10 w-28 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={selectedChannel}
+                onChange={e => setSelectedChannel((e.target.value as 'A' | 'B' | 'C'))}
+              >
+                <option value="A">Kanal A</option>
+                <option value="B">Kanal B</option>
+                <option value="C">Kanal C</option>
+              </select>
+            </div>
           </CardContent>
         </Card>
 
@@ -367,23 +385,36 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Content list */}
-        <div className="space-y-3">
-          <h2 className="text-xl font-bold">Vsebine ({items.length})</h2>
-          {items.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Play className="mb-3 h-10 w-10" />
-                <p>Ni naloženih vsebin. Dodajte slike ali videe.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-3">
-              {items.map(item => {
-                const expired = isExpired(item.endDate);
-                const notStarted = isNotStarted(item.startDate);
-                return (
-                  <Card key={item.id} className={`overflow-hidden ${expired ? 'opacity-50' : ''}`}>
+        {/* Content list by channels */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold">Vsebine po kanalih ({items.length})</h2>
+          {(['A', 'B', 'C'] as const).map(channelId => {
+            const channelItems = items.filter(item => (item.channelId || 'A') === channelId);
+            return (
+              <Card key={channelId}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center justify-between text-lg">
+                    <span>Kanal {channelId}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/player?channel=${channelId}`)}
+                    >
+                      Predogled kanala
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {channelItems.length === 0 ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Play className="h-4 w-4" />
+                      Ni vsebin za kanal {channelId}.
+                    </div>
+                  ) : channelItems.map(item => {
+                    const expired = isExpired(item.endDate);
+                    const notStarted = isNotStarted(item.startDate);
+                    return (
+                      <Card key={item.id} className={`overflow-hidden ${expired ? 'opacity-50' : ''}`}>
                     <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
                       {/* Thumbnail */}
                       <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-md bg-muted">
@@ -462,11 +493,13 @@ const Dashboard = () => {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+                      </Card>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>

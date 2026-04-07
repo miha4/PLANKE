@@ -10,6 +10,7 @@ interface ElectronAppConfig {
   progressBarEnabled: boolean;
   progressBarColor: string;
   storageDir: string;
+  playerChannel: 'A' | 'B' | 'C';
 }
 
 interface Window {

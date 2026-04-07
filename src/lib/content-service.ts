@@ -167,7 +167,9 @@ export async function getAllContentItemsAsync(): Promise<ContentItem[]> {
 }
 
 export async function getActiveContentItemsAsync(): Promise<ContentItem[]> {
-  const items = await request<ContentItem[]>('/content/active');
+  const { channelId } = getRuntimeConfig();
+  const query = channelId ? `?channel=${encodeURIComponent(channelId)}` : '';
+  const items = await request<ContentItem[]>(`/content/active${query}`);
   return items.map(item => ({ ...item, dataUrl: normalizeMediaUrl(item.dataUrl) ?? '' }));
 }
 

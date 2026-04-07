@@ -31,6 +31,7 @@ const Launcher = () => {
   const [selectedApiBase, setSelectedApiBase] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<'admin' | 'player'>('admin');
   const [playerFullscreen, setPlayerFullscreen] = useState(true);
+  const [playerChannel, setPlayerChannel] = useState<'A' | 'B' | 'C'>('A');
   const [progressBarEnabled, setProgressBarEnabled] = useState(true);
   const [progressBarColor, setProgressBarColor] = useState('#3b82f6');
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -48,6 +49,7 @@ const Launcher = () => {
       setPlayerFullscreen(config.playerFullscreen);
       setProgressBarEnabled(config.progressBarEnabled !== false);
       setProgressBarColor(config.progressBarColor || '#3b82f6');
+      setPlayerChannel(config.playerChannel || 'A');
       if (config.startupMode === 'admin' || config.startupMode === 'player') {
         setSelectedMode(config.startupMode);
       }
@@ -152,6 +154,7 @@ const Launcher = () => {
       await window.electronApp.setConfig({
         startupMode: 'player',
         playerFullscreen,
+        playerChannel,
         preferredApiBase: selectedApiBase || manualApiBase,
         progressBarEnabled,
         progressBarColor,
@@ -160,7 +163,8 @@ const Launcher = () => {
     }
     localStorage.setItem('player-progress-enabled', progressBarEnabled ? '1' : '0');
     localStorage.setItem('player-progress-color', progressBarColor);
-    navigate('/player');
+    localStorage.setItem('player-channel', playerChannel);
+    navigate(`/player?channel=${playerChannel}`);
   };
 
   const proceedWithSelection = async () => {
@@ -245,6 +249,19 @@ const Launcher = () => {
                     value={progressBarColor}
                     onChange={e => setProgressBarColor(e.target.value)}
                   />
+                </label>
+
+                <label className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>Player kanal</span>
+                  <select
+                    className="rounded border px-2 py-1 bg-background"
+                    value={playerChannel}
+                    onChange={e => setPlayerChannel((e.target.value as 'A' | 'B' | 'C'))}
+                  >
+                    <option value="A">Kanal A</option>
+                    <option value="B">Kanal B</option>
+                    <option value="C">Kanal C</option>
+                  </select>
                 </label>
                 <Button variant="outline" className="w-full gap-2" onClick={handleSearch} disabled={searching}>
                   <Search className="h-4 w-4" />
