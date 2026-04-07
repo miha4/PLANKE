@@ -226,3 +226,11 @@ To pomeni:
 - **brez** localStorage kot glavnega vira,
 - enoten backend vir za vse naprave,
 - bolj stabilno deljenje vsebine med računalnikom in telefonom.
+
+## Navodila za neprogramerje
+
+Za enostavno namestitev (Windows/macOS) poglej: `docs/NAVODILA_ZA_NEPROGRAMERJE.md`.
+
+## Navodila za build release (zate)
+
+Za pripravo `.dmg`, `.app` in `.exe` poglej: `docs/NAVODILA_BUILD_RELEASE.md`.

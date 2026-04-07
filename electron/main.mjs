@@ -11,6 +11,7 @@ const __dirname = dirname(__filename);
 const envMode = process.env.APP_MODE; // launcher | control | player
 const controlUrlFromEnv = process.env.CONTROL_URL;
 const deviceId = process.env.DEVICE_ID || 'player-01';
+const useDevServer = process.env.USE_DEV_SERVER === '1';
 const viteDevUrl = process.env.VITE_DEV_SERVER_URL || process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:5173';
 const controlPort = process.env.CONTROL_PORT || '8787';
 const localhostControlUrl = `http://127.0.0.1:${controlPort}`;
@@ -46,7 +47,7 @@ function loadAppConfig() {
       progressBarColor: String(raw?.progressBarColor ?? '#3b82f6'),
     };
   } catch {
-    // ignore malformed config and continue with defaults
+    console.error('[electron] Failed to parse app config:', configPath);
   }
 }
 
@@ -55,7 +56,7 @@ function saveAppConfig(nextConfig) {
   try {
     writeFileSync(configPath, JSON.stringify(appConfig, null, 2), 'utf8');
   } catch {
-    // non-fatal; app continues with in-memory config
+    console.error('[electron] Failed to save app config:', configPath);
   }
 }
 
@@ -141,10 +142,77 @@ function startBackendIfNeeded() {
   if (mode === 'player') return;
   const controlDataDir = join(app.getPath('userData'), 'control-data');
   mkdirSync(controlDataDir, { recursive: true });
-  backendProcess = spawn(process.execPath, [join(__dirname, '..', 'backend-control-server.mjs')], {
+  const backendScriptPath = join(__dirname, '..', 'backend-control-server.mjs');
+  backendProcess = spawn(process.execPath, [backendScriptPath], {
     stdio: 'inherit',
-    env: { ...process.env, CONTROL_PORT: controlPort, CONTROL_DATA_DIR: controlDataDir },
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      CONTROL_PORT: controlPort,
+      CONTROL_DATA_DIR: controlDataDir,
+    },
   });
+  console.log('[electron] Backend process started:', { executable: process.execPath, backendScriptPath, controlPort });
+
+  backendProcess.on('error', (error) => {
+    console.error('[electron] Backend start failed:', error);
+  });
+
+  backendProcess.on('exit', (code, signal) => {
+    if (!app.isQuitting) {
+      console.error(`[electron] Backend exited unexpectedly (code=${code}, signal=${signal})`);
+    }
+  });
+}
+
+function getRouteForMode(targetMode) {
+  if (targetMode === 'player') return '/player';
+  if (targetMode === 'admin' || targetMode === 'control') return '/admin';
+  return '/launcher';
+}
+
+function buildRouteQuery(targetMode) {
+  const query = { apiBase: `${resolvedControlUrl}/api` };
+  if (targetMode === 'player') {
+    return { ...query, deviceId };
+  }
+  return query;
+}
+
+function logWindowFailure(win) {
+  win.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.error('[electron] Frontend load failed:', { code, description, validatedURL });
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[electron] Render process gone:', details);
+  });
+
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      console.error(`[renderer:${level}] ${message} (${sourceId}:${line})`);
+    }
+  });
+}
+
+function loadFrontend(win, targetMode) {
+  const route = getRouteForMode(targetMode);
+  const query = buildRouteQuery(targetMode);
+
+  if (useDevServer) {
+    const devUrl = new URL(viteDevUrl);
+    devUrl.hash = route;
+    for (const [key, value] of Object.entries(query)) {
+      devUrl.searchParams.set(key, value);
+    }
+    console.log('[electron] Loading frontend from dev server:', devUrl.toString());
+    return win.loadURL(devUrl.toString());
+  }
+
+  const indexPath = join(__dirname, '..', 'dist', 'index.html');
+  console.log('[electron] Loading frontend from file:', indexPath, route, query);
+  return win.loadFile(indexPath, { hash: route, query });
 }
 
 function createWindow() {
@@ -157,31 +225,16 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: join(__dirname, 'preload.mjs'),
+      preload: join(__dirname, 'preload.js'),
     },
   });
+
   mainWindow = win;
+  logWindowFailure(win);
 
-  if (!app.isPackaged) {
-    if (mode === 'control' || mode === 'admin') {
-      win.loadURL(`${viteDevUrl}/admin?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
-    } else if (mode === 'player') {
-      win.loadURL(`${viteDevUrl}/player?deviceId=${encodeURIComponent(deviceId)}&apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
-    } else {
-      win.loadURL(`${viteDevUrl}/launcher?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
-    }
-    return;
-  }
-
-  const indexPath = join(__dirname, '..', 'dist', 'index.html');
-  const playerPath = join(__dirname, '..', 'dist', 'index.html');
-  if (mode === 'control' || mode === 'admin') {
-    win.loadFile(indexPath, { hash: '/admin', query: { apiBase: `${resolvedControlUrl}/api` } });
-  } else if (mode === 'player') {
-    win.loadFile(playerPath, { hash: '/player', query: { deviceId, apiBase: `${resolvedControlUrl}/api` } });
-  } else {
-    win.loadFile(indexPath, { hash: '/launcher', query: { apiBase: `${resolvedControlUrl}/api` } });
-  }
+  loadFrontend(win, mode).catch((error) => {
+    console.error('[electron] Failed to load frontend:', error);
+  });
 }
 
 function navigateMainWindow(targetMode) {
@@ -189,28 +242,13 @@ function navigateMainWindow(targetMode) {
   mode = targetMode;
   mainWindow.setKiosk(mode === 'player' && appConfig.playerFullscreen);
 
-  if (!app.isPackaged) {
-    if (mode === 'player') {
-      mainWindow.loadURL(`${viteDevUrl}/player?deviceId=${encodeURIComponent(deviceId)}&apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
-    } else if (mode === 'admin' || mode === 'control') {
-      mainWindow.loadURL(`${viteDevUrl}/admin?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
-    } else {
-      mainWindow.loadURL(`${viteDevUrl}/launcher?apiBase=${encodeURIComponent(resolvedControlUrl + '/api')}`);
-    }
-    return;
-  }
-
-  const indexPath = join(__dirname, '..', 'dist', 'index.html');
-  if (mode === 'player') {
-    mainWindow.loadFile(indexPath, { hash: '/player', query: { deviceId, apiBase: `${resolvedControlUrl}/api` } });
-  } else if (mode === 'admin' || mode === 'control') {
-    mainWindow.loadFile(indexPath, { hash: '/admin', query: { apiBase: `${resolvedControlUrl}/api` } });
-  } else {
-    mainWindow.loadFile(indexPath, { hash: '/launcher', query: { apiBase: `${resolvedControlUrl}/api` } });
-  }
+  loadFrontend(mainWindow, mode).catch((error) => {
+    console.error('[electron] Failed to navigate main window:', error);
+  });
 }
 
 app.whenReady().then(async () => {
+  app.isQuitting = false;
   const configDir = app.getPath('userData');
   mkdirSync(configDir, { recursive: true });
   configPath = join(configDir, 'app-config.json');
@@ -252,6 +290,8 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+}).catch((error) => {
+  console.error('[electron] App failed during startup:', error);
 });
 
 app.on('window-all-closed', () => {
@@ -259,6 +299,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  app.isQuitting = true;
   globalShortcut.unregisterAll();
   if (backendProcess) {
     backendProcess.kill('SIGTERM');
