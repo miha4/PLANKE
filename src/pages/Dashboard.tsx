@@ -423,6 +423,8 @@ const Dashboard = () => {
                             ) : (
                               <video src={previewItem.dataUrl} className="h-full w-full object-cover" muted autoPlay loop playsInline />
                             )
+                          ) : defaultImg ? (
+                            <img src={defaultImg} alt="Privzeta slika predogleda" className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">Brez predogleda</div>
                           )}
