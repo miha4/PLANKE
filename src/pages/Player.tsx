@@ -4,6 +4,7 @@ import { ContentItem } from '@/lib/content-store';
 import { getActiveContentItemsAsync, getDefaultImageAsync, isBackendUnavailableError } from '@/lib/content-service';
 import { Settings } from 'lucide-react';
 import { toast } from 'sonner';
+import { getRuntimeConfig } from '@/lib/runtime-config';
 
 const Player = () => {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -19,6 +20,7 @@ const Player = () => {
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const progressAnimationRef = useRef<number>();
   const navigate = useNavigate();
+  const runtimeDeviceId = getRuntimeConfig().deviceId;
 
   // Load content and request fullscreen
   useEffect(() => {
@@ -172,7 +174,7 @@ const Player = () => {
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
             >
               <Settings className="h-4 w-4" />
-              Nastavitve
+              Nazaj na izbor
             </button>
           </div>
           <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
@@ -191,7 +193,7 @@ const Player = () => {
             onClick={openSettingsMode}
             className="rounded-lg px-6 py-2 font-medium text-primary hover:bg-primary/10 transition-colors"
           >
-          Nazaj na nastavitve
+          Nazaj na izbor
           </button>
       </div>
     );
@@ -249,11 +251,12 @@ const Player = () => {
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/20 transition-colors"
           >
             <Settings className="h-4 w-4" />
-            Nastavitve
+            Nazaj na izbor
           </button>
         </div>
         <div className="absolute bottom-4 right-4 rounded-lg bg-black/60 px-3 py-1.5 text-sm font-mono text-primary-foreground">
           {currentIndex + 1} / {items.length}
+          {runtimeDeviceId ? ` · ${runtimeDeviceId}` : ''}
         </div>
         {window.electronApp && (
           <div className="absolute bottom-4 left-4 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-primary-foreground">
