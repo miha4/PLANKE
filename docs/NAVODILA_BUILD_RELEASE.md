@@ -112,3 +112,16 @@ Ta repo trenutno vsebuje osnovni packaging, brez prisiljene podpisne konfiguraci
 
 - Prazno okno po instalaciji  
   Rešitev: preveri, da je `npm run build` uspešen in da packaging vključuje `dist/**`.
+
+
+## 9) Imena ikon (branding)
+
+Pred `npm run dist` dodaj svoje ikone v mapo `public/` z naslednjimi imeni:
+
+- `planke-android192.png`
+- `planke-android512.png`
+- `planke-apple.png`
+
+Packaging konfiguracija trenutno pričakuje:
+- macOS ikona: `public/planke-apple.png`
+- Windows ikona: `public/planke-android512.png`

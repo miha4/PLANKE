@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain } from 'electron';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -27,6 +27,7 @@ let appConfig = {
   preferredApiBase: '',
   progressBarEnabled: true,
   progressBarColor: '#3b82f6',
+  storageDir: '',
 };
 
 function normalizeMode(value) {
@@ -45,6 +46,7 @@ function loadAppConfig() {
       preferredApiBase: String(raw?.preferredApiBase ?? ''),
       progressBarEnabled: raw?.progressBarEnabled !== false,
       progressBarColor: String(raw?.progressBarColor ?? '#3b82f6'),
+      storageDir: String(raw?.storageDir ?? ''),
     };
   } catch {
     console.error('[electron] Failed to parse app config:', configPath);
@@ -140,7 +142,7 @@ async function resolveControlUrl() {
 
 function startBackendIfNeeded() {
   if (mode === 'player') return;
-  const controlDataDir = join(app.getPath('userData'), 'control-data');
+  const controlDataDir = appConfig.storageDir?.trim() || join(app.getPath('userData'), 'control-data');
   mkdirSync(controlDataDir, { recursive: true });
   const backendScriptPath = join(__dirname, '..', 'backend-control-server.mjs');
   backendProcess = spawn(process.execPath, [backendScriptPath], {
@@ -163,6 +165,19 @@ function startBackendIfNeeded() {
       console.error(`[electron] Backend exited unexpectedly (code=${code}, signal=${signal})`);
     }
   });
+}
+
+function stopBackendIfRunning() {
+  if (backendProcess) {
+    backendProcess.kill('SIGTERM');
+    backendProcess = undefined;
+  }
+}
+
+function restartBackendIfNeeded() {
+  if (mode === 'player') return;
+  stopBackendIfRunning();
+  startBackendIfNeeded();
 }
 
 function getRouteForMode(targetMode) {
@@ -261,18 +276,38 @@ app.whenReady().then(async () => {
     resolvedControlUrl,
     controlPort,
     preferredApiBase: appConfig.preferredApiBase,
+    storageDir: appConfig.storageDir,
   }));
 
   ipcMain.handle('app-config:set', (_event, nextConfig) => {
+    const previousStorageDir = appConfig.storageDir;
     saveAppConfig({
       startupMode: normalizeMode(nextConfig?.startupMode),
       playerFullscreen: nextConfig?.playerFullscreen !== false,
       preferredApiBase: String(nextConfig?.preferredApiBase ?? appConfig.preferredApiBase ?? ''),
       progressBarEnabled: nextConfig?.progressBarEnabled !== false,
       progressBarColor: String(nextConfig?.progressBarColor ?? appConfig.progressBarColor ?? '#3b82f6'),
+      storageDir: String(nextConfig?.storageDir ?? appConfig.storageDir ?? ''),
     });
+    if (appConfig.storageDir !== previousStorageDir) {
+      restartBackendIfNeeded();
+    }
     navigateMainWindow(appConfig.startupMode);
     return appConfig;
+  });
+
+  ipcMain.handle('app:select-storage-dir', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: appConfig.storageDir?.trim() || join(app.getPath('userData'), 'control-data'),
+      title: 'Izberi mapo za podatke PLANKE',
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const selectedDir = result.filePaths[0];
+    saveAppConfig({ storageDir: selectedDir });
+    restartBackendIfNeeded();
+    resolvedControlUrl = await resolveControlUrl();
+    return selectedDir;
   });
 
   ipcMain.handle('app:open-settings', () => {
@@ -301,7 +336,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   app.isQuitting = true;
   globalShortcut.unregisterAll();
-  if (backendProcess) {
-    backendProcess.kill('SIGTERM');
-  }
+  stopBackendIfRunning();
 });
