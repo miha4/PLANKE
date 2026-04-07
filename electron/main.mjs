@@ -283,6 +283,7 @@ app.whenReady().then(async () => {
   }));
 
   ipcMain.handle('app-config:set', (_event, nextConfig) => {
+    const previousStartupMode = appConfig.startupMode;
     const previousStorageDir = appConfig.storageDir;
     saveAppConfig({
       startupMode: normalizeMode(nextConfig?.startupMode),
@@ -295,6 +296,10 @@ app.whenReady().then(async () => {
     });
     if (appConfig.storageDir !== previousStorageDir) {
       restartBackendIfNeeded();
+    } else if (previousStartupMode === 'player' && appConfig.startupMode !== 'player') {
+      startBackendIfNeeded();
+    } else if (previousStartupMode !== 'player' && appConfig.startupMode === 'player') {
+      stopBackendIfRunning();
     }
     navigateMainWindow(appConfig.startupMode);
     return appConfig;
@@ -315,6 +320,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('app:open-settings', () => {
+    if (!backendProcess) startBackendIfNeeded();
     navigateMainWindow('launcher');
     return true;
   });
