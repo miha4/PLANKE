@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Play, Trash2, Upload, Monitor, Clock, CalendarDays, Image, Film,
-  ImageOff,
+  ImageOff, ArrowLeft, FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,6 +45,7 @@ const Dashboard = () => {
   const [dragOver, setDragOver] = useState(false);
   const [defaultImg, setDefaultImg] = useState<string | null>(null);
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
+  const [storageDir, setStorageDir] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const defaultImgInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -68,6 +69,10 @@ const Dashboard = () => {
       try {
         setDefaultImg(await getDefaultImageAsync());
         setNetworkInfo(await getNetworkInfoAsync());
+        if (window.electronApp) {
+          const cfg = await window.electronApp.getConfig();
+          setStorageDir(cfg.storageDir || '');
+        }
       } catch (error) {
         if (!isBackendUnavailableError(error)) {
           toast.error('Napaka pri nalaganju privzete slike');
@@ -161,6 +166,16 @@ const Dashboard = () => {
   const isExpired = (endDate: string) => new Date(endDate) < new Date();
   const isNotStarted = (startDate: string) => new Date(startDate) > new Date();
 
+  const pickStorageDir = async () => {
+    if (!window.electronApp) return;
+    const selected = await window.electronApp.selectStorageDir();
+    if (selected) {
+      setStorageDir(selected);
+      toast.success('Mapa za shranjevanje je posodobljena');
+      await refresh();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-6 md:p-10">
       <div className="mx-auto max-w-5xl space-y-8">
@@ -171,6 +186,10 @@ const Dashboard = () => {
             <p className="mt-1 text-muted-foreground">Upravljajte vsebino predvajalnika oglasov</p>
           </div>
           <div className="flex gap-2">
+            <Button onClick={() => navigate('/launcher')} variant="outline" size="lg" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Nazaj na izbor
+            </Button>
             <Button onClick={() => navigate('/player')} size="lg" className="gap-2">
               <Monitor className="h-4 w-4" />
               Predvajaj
@@ -210,6 +229,26 @@ const Dashboard = () => {
             </div>
           </CardContent>
         </Card>
+
+        {window.electronApp && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Shranjevanje datotek</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Slike in videi se shranjujejo v izbrano mapo. Če mape ne izbereš, se uporabi privzeta mapa aplikacije.
+              </p>
+              <div className="rounded-md border p-3 break-all">
+                <strong>Trenutna mapa:</strong> {storageDir || '(privzeta aplikacijska mapa)'}
+              </div>
+              <Button variant="outline" onClick={pickStorageDir} className="gap-2">
+                <FolderOpen className="h-4 w-4" />
+                Izberi mapo za podatke
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Default Image */}
         <Card>

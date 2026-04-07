@@ -1,7 +1,7 @@
 // uvozi modulov
 import express from 'express'; // glavni web streznik
 import cors from 'cors'; // dovoli klice iz frontenda na drugem naslovu/portu
-import { mkdirSync, writeFileSync } from 'node:fs'; // ustvarjanje map in zapis datotek
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'; // ustvarjanje map in zapis datotek
 import { dirname, join } from 'node:path'; // delo s potmi do map/datotek
 import { fileURLToPath } from 'node:url'; // pretvori import.meta.url v pravo datotecno pot
 import { DatabaseSync } from 'node:sqlite'; // SQLite baza
@@ -314,6 +314,38 @@ app.delete('/api/default-image', (_req, res) => {
 });
 
 // FTP endpointi so odstranjeni, ker aplikacija uporablja lokalni upload in media storage.
+
+
+const frontendDistDir = join(__dirname, 'dist');
+const frontendIndexFile = join(frontendDistDir, 'index.html');
+
+function extractSearchFromOriginalUrl(originalUrl = '') {
+  const idx = originalUrl.indexOf('?');
+  return idx >= 0 ? originalUrl.slice(idx) : '';
+}
+
+function setupFrontendRoutes() {
+  if (!existsSync(frontendIndexFile)) {
+    console.warn('[backend] dist/index.html not found. Frontend routes (/player, /admin, /launcher) will return 404 until you run npm run build.');
+    return;
+  }
+
+  // 1) statični frontend build (dist/assets, favicon, ...)
+  app.use(express.static(frontendDistDir, { index: false }));
+
+  // 2) lepši URL-ji za HashRouter: /player -> /#/player
+  app.get(['/player', '/admin', '/launcher'], (req, res) => {
+    const search = extractSearchFromOriginalUrl(req.originalUrl);
+    res.redirect(`/#${req.path}${search}`);
+  });
+
+  // 3) catch-all fallback za vse ne-API poti
+  app.get(/^(?!\/api(?:\/|$)).*/, (_req, res) => {
+    res.sendFile(frontendIndexFile);
+  });
+}
+
+setupFrontendRoutes();
 
 // zagon strežnika
 const port = Number(process.env.CONTROL_PORT ?? 8787);

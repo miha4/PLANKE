@@ -32,6 +32,7 @@ const Launcher = () => {
   const [progressBarColor, setProgressBarColor] = useState('#3b82f6');
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardIp, setWizardIp] = useState('');
+  const [wizardSinglePort, setWizardSinglePort] = useState(8787);
   const [wizardPortFrom, setWizardPortFrom] = useState(8787);
   const [wizardPortTo, setWizardPortTo] = useState(8795);
   const [manualApiBaseInput, setManualApiBaseInput] = useState('');
@@ -87,6 +88,24 @@ const Launcher = () => {
         toast.success(`Najden admin app na ${found}`);
       } else {
         toast.error('Na vpisanem IP-ju ni najdenega admin appa v izbranem port range-u.');
+      }
+    } finally {
+      setWizardSearching(false);
+    }
+  };
+
+  const handleQuickScan = async () => {
+    const from = Math.max(1, Math.min(65535, wizardSinglePort));
+    setWizardSearching(true);
+    try {
+      const found = await searchAdminByIpAsync(wizardIp, [from]);
+      if (found) {
+        setDiscoveredApiBase(found);
+        setSelectedApiBase(found);
+        setManualApiBaseInput(found);
+        toast.success(`Najden admin app na ${found}`);
+      } else {
+        toast.error(`Admin app ni najden na ${wizardIp}:${from}.`);
       }
     } finally {
       setWizardSearching(false);
@@ -226,30 +245,43 @@ const Launcher = () => {
                 </Button>
                 <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">Čarovnik: IP + samodejni port scan</Button>
+                    <Button variant="outline" className="w-full">Čarovnik: hitra povezava player ↔ admin</Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Iskanje Electron Admin Appa</DialogTitle>
+                      <DialogTitle>Poveži player na admin</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Najprej poskusi hiter scan na tipičnem portu 8787. Port range uporabi samo, če je admin nastavljen na drug port.
+                      </p>
                       <div className="space-y-2">
                         <Label>IP naslov admin naprave</Label>
                         <Input value={wizardIp} onChange={e => setWizardIp(e.target.value)} placeholder="192.168.1.50" />
                       </div>
+                      <div className="space-y-2">
+                        <Label>Hiter scan (en port)</Label>
+                        <Input type="number" value={wizardSinglePort} onChange={e => setWizardSinglePort(parseInt(e.target.value) || 8787)} />
+                        <Button className="w-full" onClick={handleQuickScan} disabled={wizardSearching || !wizardIp.trim()}>
+                          {wizardSearching ? 'Iščem...' : 'Preveri ta IP + port'}
+                        </Button>
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
-                          <Label>Port od</Label>
+                          <Label>Napredni scan: port od</Label>
                           <Input type="number" value={wizardPortFrom} onChange={e => setWizardPortFrom(parseInt(e.target.value) || 8787)} />
                         </div>
                         <div className="space-y-2">
-                          <Label>Port do</Label>
+                          <Label>Napredni scan: port do</Label>
                           <Input type="number" value={wizardPortTo} onChange={e => setWizardPortTo(parseInt(e.target.value) || 8795)} />
                         </div>
                       </div>
-                      <Button className="w-full" onClick={handleWizardScan} disabled={wizardSearching}>
-                        {wizardSearching ? 'Iščem...' : 'Poišči admin app po IP + portih'}
+                      <Button className="w-full" onClick={handleWizardScan} disabled={wizardSearching || !wizardIp.trim()}>
+                        {wizardSearching ? 'Iščem...' : 'Napredni scan po port range-u'}
                       </Button>
+                      <div className="rounded border p-2 text-xs">
+                        Predlagan ročni URL: <code>http://{wizardIp || 'IP_ADMIN'}:{wizardSinglePort}/api</code>
+                      </div>
                       <div className="space-y-2">
                         <Label>Ročni vnos API (fallback)</Label>
                         <Input value={manualApiBaseInput} onChange={e => setManualApiBaseInput(e.target.value)} placeholder="http://192.168.1.50:8787/api" />
