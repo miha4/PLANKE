@@ -6,23 +6,21 @@
   "main": "electron/main.mjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "electron:dev": "USE_DEV_SERVER=1 APP_MODE=launcher npm run electron",
     "dev:backend": "node backend-control-server.mjs",
     "dev:control": "bash ./scripts/dev-control.sh",
     "dev:electron:control": "bash ./scripts/dev-electron-control.sh",
     "dev:electron:player": "bash ./scripts/dev-electron-player.sh",
-    "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "electron": "electron .",
-    "build:web": "vite build",
-    "build:electron": "npm run build:web && node scripts/package-electron.mjs",
-    "build:electron:mac": "npm run build:web && node scripts/package-electron.mjs",
-    "build:electron:win": "npm run build:web && node scripts/package-electron.mjs",
-    "build-electron-mac": "npm run build:web && node scripts/package-electron.mjs",
-    "build-electron-win": "npm run build:web && node scripts/package-electron.mjs"
+    "dist": "npm run clean:release && npm run build && npm run check:electron-main && electron-builder --mac dmg --win nsis",
+    "check:electron-main": "node --check electron/main.mjs",
+    "clean:release": "node -e \"require('node:fs').rmSync('release',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -101,6 +99,40 @@
     "typescript-eslint": "^8.38.0",
     "vite": "^5.4.19",
     "vitest": "^3.2.4",
-    "wait-on": "^8.0.5"
+    "wait-on": "^8.0.5",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.planke.desktop",
+    "productName": "PLANKE",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "backend-control-server.mjs",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.mjs"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }
