@@ -18,7 +18,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "electron": "electron .",
-    "dist": "npm run build && electron-builder --mac dmg --win nsis"
+    "dist": "npm run clean:release && npm run build && npm run check:electron-main && electron-builder --mac dmg --win nsis",
+    "check:electron-main": "node --check electron/main.mjs",
+    "clean:release": "node -e \"require('node:fs').rmSync('release',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

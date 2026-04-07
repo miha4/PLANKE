@@ -30,8 +30,10 @@ npm run dist
 ```
 
 Ta izvede:
-1. `vite build` (frontend v `dist/`),
-2. `electron-builder --mac dmg --win nsis`.
+1. čiščenje stare mape `release/`,
+2. `vite build` (frontend v `dist/`),
+3. sintaktični check `electron/main.mjs`,
+4. `electron-builder --mac dmg --win nsis`.
 
 Output gre v mapo:
 
@@ -40,6 +42,11 @@ release/
 ```
 
 ## 4) Priporočen način po korakih
+
+
+### 4.0 Pred ponovnim buildom po napaki
+
+Če si prej zgradil pokvarjen `.app`/`.dmg`, ga najprej izbriši in naredi nov build, da ne testiraš starega artefakta.
 
 ### 4.1 Preveri build frontenda
 
