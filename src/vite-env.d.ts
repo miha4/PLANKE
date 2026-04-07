@@ -9,6 +9,8 @@ interface ElectronAppConfig {
   preferredApiBase: string;
   progressBarEnabled: boolean;
   progressBarColor: string;
+  storageDir: string;
+  playerChannel: 'A' | 'B' | 'C';
 }
 
 interface Window {
@@ -16,5 +18,6 @@ interface Window {
     getConfig: () => Promise<ElectronAppConfig>;
     setConfig: (config: Partial<ElectronAppConfig>) => Promise<ElectronAppConfig>;
     openSettings: () => Promise<boolean>;
+    selectStorageDir: () => Promise<string | null>;
   };
 }
