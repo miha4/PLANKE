@@ -11,6 +11,9 @@ import { toast } from 'sonner';
 
 function getManualAdminApiBase() {
   const current = new URL(window.location.href);
+  if (current.protocol === 'file:') {
+    return 'http://127.0.0.1:8787/api';
+  }
   if (current.hostname.endsWith('.app.github.dev')) {
     const host = current.hostname.replace(/-\d+\./, '-8787.');
     return `${current.protocol}//${host}/api`;
@@ -58,14 +61,18 @@ const Launcher = () => {
   const handleSearch = async () => {
     setSearching(true);
     try {
-      const found = await searchAdminAppAsync();
+      const found = await searchAdminAppAsync(selectedMode === 'player' ? manualApiBase : undefined);
       if (found) {
         setDiscoveredApiBase(found);
         setSelectedApiBase(found);
         toast.success(`Najden admin app: ${found}`);
       } else {
         setDiscoveredApiBase(null);
-        toast.error('Admin app ni bil najden samodejno. Uporabi ročni URL spodaj.');
+        if (selectedMode === 'player') {
+          toast.error('Oddaljen admin app ni bil najden samodejno. Uporabi ročni URL spodaj.');
+        } else {
+          toast.error('Admin app ni bil najden samodejno. Uporabi ročni URL spodaj.');
+        }
       }
     } finally {
       setSearching(false);
