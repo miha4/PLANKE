@@ -45,6 +45,11 @@ function buildApiBaseCandidates() {
   ]);
 }
 
+function getOfflineFallbackApiBase(candidates: string[]) {
+  return candidates.find(candidate => candidate.includes(`:${CONTROL_PORT}/api`))
+    || `http://127.0.0.1:${CONTROL_PORT}/api`;
+}
+
 async function probeApiBase(apiBase: string): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -86,7 +91,7 @@ async function resolveApiBase(): Promise<string> {
         return candidate;
       }
     }
-    resolvedApiBaseCache = candidates[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
+    resolvedApiBaseCache = getOfflineFallbackApiBase(candidates);
     return resolvedApiBaseCache;
   })();
 
@@ -124,6 +129,8 @@ export interface PlayerTokenRecord {
   masked: string;
 }
 
+export type AuthMode = 'player-and-admin' | 'admin-only';
+
 function getAuthHeaders(extraHeaders?: HeadersInit): HeadersInit {
   const { playerToken } = getRuntimeConfig();
   const authHeaders: Record<string, string> = {};
@@ -132,7 +139,7 @@ function getAuthHeaders(extraHeaders?: HeadersInit): HeadersInit {
 }
 
 function getResolvedBackendOrigin() {
-  const fallback = buildApiBaseCandidates()[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
+  const fallback = getOfflineFallbackApiBase(buildApiBaseCandidates());
   return new URL(resolvedApiBaseCache || fallback).origin;
 }
 
@@ -246,4 +253,17 @@ export async function addPlayerTokenAsync(token: string): Promise<void> {
 
 export async function removePlayerTokenAsync(id: string): Promise<void> {
   await request(`/player-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function getAuthModeAsync(): Promise<AuthMode> {
+  const result = await request<{ mode: AuthMode }>('/auth-mode');
+  return result.mode === 'admin-only' ? 'admin-only' : 'player-and-admin';
+}
+
+export async function setAuthModeAsync(mode: AuthMode): Promise<AuthMode> {
+  const result = await request<{ mode: AuthMode }>('/auth-mode', {
+    method: 'PUT',
+    body: JSON.stringify({ mode }),
+  });
+  return result.mode === 'admin-only' ? 'admin-only' : 'player-and-admin';
 }

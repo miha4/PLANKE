@@ -31,6 +31,8 @@ let appConfig = {
   storageDir: '',
   playerChannel: 'A',
   playerToken: '',
+  adminAutoplayEnabled: false,
+  adminAutoplayChannel: 'A',
 };
 
 function generatePlayerToken(length = 30) {
@@ -56,6 +58,8 @@ function loadAppConfig() {
       storageDir: String(raw?.storageDir ?? ''),
       playerChannel: raw?.playerChannel === 'B' || raw?.playerChannel === 'C' ? raw.playerChannel : 'A',
       playerToken: String(raw?.playerToken ?? ''),
+      adminAutoplayEnabled: raw?.adminAutoplayEnabled === true,
+      adminAutoplayChannel: raw?.adminAutoplayChannel === 'B' || raw?.adminAutoplayChannel === 'C' ? raw.adminAutoplayChannel : 'A',
     };
   } catch {
     console.error('[electron] Failed to parse app config:', configPath);
@@ -190,6 +194,7 @@ function restartBackendIfNeeded() {
 }
 
 function getRouteForMode(targetMode) {
+  if (targetMode === 'admin' && appConfig.adminAutoplayEnabled) return '/player';
   if (targetMode === 'player') return '/player';
   if (targetMode === 'admin' || targetMode === 'control') return '/admin';
   return '/launcher';
@@ -203,6 +208,14 @@ function buildRouteQuery(targetMode) {
       deviceId,
       channel: appConfig.playerChannel || 'A',
       playerToken: appConfig.playerToken,
+    };
+  }
+  if (targetMode === 'admin' && appConfig.adminAutoplayEnabled) {
+    return {
+      ...query,
+      channel: appConfig.adminAutoplayChannel || 'A',
+      playerToken: appConfig.playerToken,
+      deviceId,
     };
   }
   return query;
@@ -310,6 +323,8 @@ app.whenReady().then(async () => {
       storageDir: String(nextConfig?.storageDir ?? appConfig.storageDir ?? ''),
       playerChannel: nextConfig?.playerChannel === 'B' || nextConfig?.playerChannel === 'C' ? nextConfig.playerChannel : 'A',
       playerToken: String(nextConfig?.playerToken ?? appConfig.playerToken ?? ''),
+      adminAutoplayEnabled: nextConfig?.adminAutoplayEnabled === true,
+      adminAutoplayChannel: nextConfig?.adminAutoplayChannel === 'B' || nextConfig?.adminAutoplayChannel === 'C' ? nextConfig.adminAutoplayChannel : 'A',
     });
     if (appConfig.storageDir !== previousStorageDir) {
       restartBackendIfNeeded();
