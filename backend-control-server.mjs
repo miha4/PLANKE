@@ -8,6 +8,8 @@ import { DatabaseSync } from 'node:sqlite'; // SQLite baza
 import { networkInterfaces } from 'node:os';
 import { createHash } from 'node:crypto';
 
+const allowSameSubnetWithoutToken = process.env.ALLOW_SAME_SUBNET_WITHOUT_TOKEN !== '0';
+
 const __filename = fileURLToPath(import.meta.url); // polna pot do .js datoteke
 const __dirname = dirname(__filename); // mapa, kjer ta datoteka je
 const dataDir = process.env.CONTROL_DATA_DIR
@@ -100,6 +102,8 @@ function extensionFromMime(mimeType) {
     'image/png': 'png',
     'image/webp': 'webp',
     'image/gif': 'gif',
+    'image/heic': 'heic',
+    'image/heif': 'heif',
     'video/mp4': 'mp4',
     'video/webm': 'webm',
     'video/ogg': 'ogv',
@@ -129,7 +133,11 @@ function saveDataUrlAsMedia(dataUrl, originalName = 'upload') {
 //  -H "Content-Type: image/jpeg"
 //takrat backend ne dobi base 64 pač pa bytes datoteke
 function saveBinaryAsMedia(binary, mimeType = 'application/octet-stream', originalName = 'upload') {
-  const ext = extensionFromMime(mimeType);
+  let ext = extensionFromMime(mimeType);
+  if (ext === 'bin') {
+    const nameExt = String(originalName).split('.').pop()?.toLowerCase();
+    if (nameExt && /^[a-z0-9]{2,6}$/.test(nameExt)) ext = nameExt;
+  }
   const safeName = sanitizeFileName(originalName).replace(/\.[^.]+$/, '');
   const fileName = `${Date.now()}-${crypto.randomUUID()}-${safeName}.${ext}`;
   const outputPath = join(mediaDir, fileName);
@@ -175,9 +183,40 @@ function getIncomingPlayerToken(req) {
   return '';
 }
 
+
+function extractIPv4(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const mapped = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+  const parts = mapped.split('.');
+  if (parts.length !== 4) return null;
+  const octets = parts.map(Number);
+  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  return octets;
+}
+
+function isSameSubnet(clientAddress) {
+  const clientIp = extractIPv4(clientAddress);
+  if (!clientIp) return false;
+
+  const interfaces = networkInterfaces();
+  for (const list of Object.values(interfaces)) {
+    for (const net of list || []) {
+      if (net.family !== 'IPv4' || net.internal) continue;
+      const hostIp = extractIPv4(net.address);
+      const maskIp = extractIPv4(net.netmask);
+      if (!hostIp || !maskIp) continue;
+      const sameSubnet = hostIp.every((octet, index) => (octet & maskIp[index]) === (clientIp[index] & maskIp[index]));
+      if (sameSubnet) return true;
+    }
+  }
+  return false;
+}
+
 function requirePlayerToken(req, res, next) {
   const allowedHashes = readPlayerTokenHashes();
   if (allowedHashes.length === 0) return next();
+  if (allowSameSubnetWithoutToken && isSameSubnet(req.socket?.remoteAddress)) return next();
 
   const provided = getIncomingPlayerToken(req);
   if (!provided) return res.status(401).json({ error: 'Player token is required' });

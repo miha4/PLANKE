@@ -37,6 +37,10 @@ function formatDateSl(iso: string): string {
   return new Date(iso).toLocaleDateString('sl-SI');
 }
 
+function isLikelyHeic(file: File): boolean {
+  return /\.hei[cf]$/i.test(file.name);
+}
+
 const Dashboard = () => {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [displaySeconds, setDisplaySeconds] = useState(10);
@@ -93,7 +97,7 @@ const Dashboard = () => {
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      const isImage = file.type.startsWith('image/');
+      const isImage = file.type.startsWith('image/') || isLikelyHeic(file);
       const isVideo = file.type.startsWith('video/');
       if (!isImage && !isVideo) {
         toast.error(`Nepodprta datoteka: ${file.name}`);
@@ -146,7 +150,7 @@ const Dashboard = () => {
   const handleDefaultImage = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    if (!file.type.startsWith('image/')) {
+    if (!(file.type.startsWith('image/') || isLikelyHeic(file))) {
       toast.error('Samo slike so dovoljene za privzeto sliko');
       return;
     }
@@ -367,7 +371,7 @@ const Dashboard = () => {
               <input
                 ref={defaultImgInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 className="hidden"
                 onChange={e => handleDefaultImage(e.target.files)}
               />
@@ -454,7 +458,7 @@ const Dashboard = () => {
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*,video/*"
+            accept="image/*,video/*,.heic,.heif"
             className="hidden"
             onChange={e => handleFiles(e.target.files)}
           />
