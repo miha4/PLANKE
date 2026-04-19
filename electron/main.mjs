@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,7 +30,12 @@ let appConfig = {
   progressBarColor: '#3b82f6',
   storageDir: '',
   playerChannel: 'A',
+  playerToken: '',
 };
+
+function generatePlayerToken(length = 30) {
+  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+}
 
 function normalizeMode(value) {
   if (value === 'control') return 'admin';
@@ -49,6 +55,7 @@ function loadAppConfig() {
       progressBarColor: String(raw?.progressBarColor ?? '#3b82f6'),
       storageDir: String(raw?.storageDir ?? ''),
       playerChannel: raw?.playerChannel === 'B' || raw?.playerChannel === 'C' ? raw.playerChannel : 'A',
+      playerToken: String(raw?.playerToken ?? ''),
     };
   } catch {
     console.error('[electron] Failed to parse app config:', configPath);
@@ -191,7 +198,12 @@ function getRouteForMode(targetMode) {
 function buildRouteQuery(targetMode) {
   const query = { apiBase: `${resolvedControlUrl}/api` };
   if (targetMode === 'player') {
-    return { ...query, deviceId, channel: appConfig.playerChannel || 'A' };
+    return {
+      ...query,
+      deviceId,
+      channel: appConfig.playerChannel || 'A',
+      playerToken: appConfig.playerToken,
+    };
   }
   return query;
 }
@@ -270,6 +282,9 @@ app.whenReady().then(async () => {
   mkdirSync(configDir, { recursive: true });
   configPath = join(configDir, 'app-config.json');
   loadAppConfig();
+  if (!appConfig.playerToken) {
+    saveAppConfig({ playerToken: generatePlayerToken() });
+  }
   mode = envMode ? normalizeMode(envMode) : appConfig.startupMode;
 
   ipcMain.handle('app-config:get', () => ({
@@ -280,6 +295,7 @@ app.whenReady().then(async () => {
     preferredApiBase: appConfig.preferredApiBase,
     storageDir: appConfig.storageDir,
     playerChannel: appConfig.playerChannel,
+    playerToken: appConfig.playerToken,
   }));
 
   ipcMain.handle('app-config:set', (_event, nextConfig) => {
@@ -293,6 +309,7 @@ app.whenReady().then(async () => {
       progressBarColor: String(nextConfig?.progressBarColor ?? appConfig.progressBarColor ?? '#3b82f6'),
       storageDir: String(nextConfig?.storageDir ?? appConfig.storageDir ?? ''),
       playerChannel: nextConfig?.playerChannel === 'B' || nextConfig?.playerChannel === 'C' ? nextConfig.playerChannel : 'A',
+      playerToken: String(nextConfig?.playerToken ?? appConfig.playerToken ?? ''),
     });
     if (appConfig.storageDir !== previousStorageDir) {
       restartBackendIfNeeded();

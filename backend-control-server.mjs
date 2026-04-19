@@ -6,6 +6,9 @@ import { dirname, join } from 'node:path'; // delo s potmi do map/datotek
 import { fileURLToPath } from 'node:url'; // pretvori import.meta.url v pravo datotecno pot
 import { DatabaseSync } from 'node:sqlite'; // SQLite baza
 import { networkInterfaces } from 'node:os';
+import { createHash } from 'node:crypto';
+
+const allowSameSubnetWithoutToken = process.env.ALLOW_SAME_SUBNET_WITHOUT_TOKEN !== '0';
 
 const __filename = fileURLToPath(import.meta.url); // polna pot do .js datoteke
 const __dirname = dirname(__filename); // mapa, kjer ta datoteka je
@@ -99,6 +102,8 @@ function extensionFromMime(mimeType) {
     'image/png': 'png',
     'image/webp': 'webp',
     'image/gif': 'gif',
+    'image/heic': 'heic',
+    'image/heif': 'heif',
     'video/mp4': 'mp4',
     'video/webm': 'webm',
     'video/ogg': 'ogv',
@@ -128,7 +133,11 @@ function saveDataUrlAsMedia(dataUrl, originalName = 'upload') {
 //  -H "Content-Type: image/jpeg"
 //takrat backend ne dobi base 64 pač pa bytes datoteke
 function saveBinaryAsMedia(binary, mimeType = 'application/octet-stream', originalName = 'upload') {
-  const ext = extensionFromMime(mimeType);
+  let ext = extensionFromMime(mimeType);
+  if (ext === 'bin') {
+    const nameExt = String(originalName).split('.').pop()?.toLowerCase();
+    if (nameExt && /^[a-z0-9]{2,6}$/.test(nameExt)) ext = nameExt;
+  }
   const safeName = sanitizeFileName(originalName).replace(/\.[^.]+$/, '');
   const fileName = `${Date.now()}-${crypto.randomUUID()}-${safeName}.${ext}`;
   const outputPath = join(mediaDir, fileName);
@@ -147,6 +156,73 @@ function readSetting(key, fallback = null) {
 function writeSetting(key, value) {
   db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(key, JSON.stringify(value));
+}
+
+function normalizePlayerToken(token) {
+  return String(token ?? '').trim();
+}
+
+function hashPlayerToken(token) {
+  return createHash('sha256').update(normalizePlayerToken(token), 'utf8').digest('hex');
+}
+
+function readPlayerTokenHashes() {
+  const list = readSetting('playerTokenHashes', []);
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.filter(item => typeof item === 'string' && item.length > 0))];
+}
+
+function writePlayerTokenHashes(hashes) {
+  writeSetting('playerTokenHashes', [...new Set(hashes)]);
+}
+
+function getIncomingPlayerToken(req) {
+  const headerValue = req.get('x-planke-token');
+  if (headerValue?.trim()) return headerValue.trim();
+  if (typeof req.query.token === 'string' && req.query.token.trim()) return req.query.token.trim();
+  return '';
+}
+
+
+function extractIPv4(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const mapped = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+  const parts = mapped.split('.');
+  if (parts.length !== 4) return null;
+  const octets = parts.map(Number);
+  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  return octets;
+}
+
+function isSameSubnet(clientAddress) {
+  const clientIp = extractIPv4(clientAddress);
+  if (!clientIp) return false;
+
+  const interfaces = networkInterfaces();
+  for (const list of Object.values(interfaces)) {
+    for (const net of list || []) {
+      if (net.family !== 'IPv4' || net.internal) continue;
+      const hostIp = extractIPv4(net.address);
+      const maskIp = extractIPv4(net.netmask);
+      if (!hostIp || !maskIp) continue;
+      const sameSubnet = hostIp.every((octet, index) => (octet & maskIp[index]) === (clientIp[index] & maskIp[index]));
+      if (sameSubnet) return true;
+    }
+  }
+  return false;
+}
+
+function requirePlayerToken(req, res, next) {
+  const allowedHashes = readPlayerTokenHashes();
+  if (allowedHashes.length === 0) return next();
+  if (allowSameSubnetWithoutToken && isSameSubnet(req.socket?.remoteAddress)) return next();
+
+  const provided = getIncomingPlayerToken(req);
+  if (!provided) return res.status(401).json({ error: 'Player token is required' });
+  const providedHash = hashPlayerToken(provided);
+  if (!allowedHashes.includes(providedHash)) return res.status(403).json({ error: 'Invalid player token' });
+  return next();
 }
 
 //API ENDPOINTI
@@ -192,7 +268,7 @@ app.get('/api/content', (_req, res) => {
 });
 
 //endpoint, ki ga uporablja player: vrne samo aktivne vsebine
-app.get('/api/content/active', (_req, res) => {
+app.get('/api/content/active', requirePlayerToken, (_req, res) => {
   const now = nowIso();
   const channelId = _req.query.channel ? normalizeChannelId(_req.query.channel) : null;
   const rows = channelId
@@ -210,6 +286,39 @@ app.get('/api/content/active', (_req, res) => {
     createdAt: r.created_at,
     order: r.sort_order,
   })));
+});
+
+app.get('/api/player-tokens', (_req, res) => {
+  const hashes = readPlayerTokenHashes();
+  res.json(hashes.map(hash => ({
+    id: hash,
+    masked: `${hash.slice(0, 6)}...${hash.slice(-4)}`,
+  })));
+});
+
+app.post('/api/player-tokens', (req, res) => {
+  const token = normalizePlayerToken(req.body?.token);
+  if (token.length < 12) {
+    return res.status(400).json({ error: 'Token must be at least 12 characters long' });
+  }
+
+  const tokenHash = hashPlayerToken(token);
+  const hashes = readPlayerTokenHashes();
+  if (!hashes.includes(tokenHash)) {
+    hashes.push(tokenHash);
+    writePlayerTokenHashes(hashes);
+  }
+
+  return res.status(201).json({ ok: true, id: tokenHash });
+});
+
+app.delete('/api/player-tokens/:id', (req, res) => {
+  const tokenId = String(req.params.id ?? '').trim();
+  if (!tokenId) return res.status(400).json({ error: 'Token id is required' });
+
+  const filtered = readPlayerTokenHashes().filter(hash => hash !== tokenId);
+  writePlayerTokenHashes(filtered);
+  return res.status(204).end();
 });
 
 //endpoint ustvari nov content idem: prebere body, ustvari nov ID, zapiše čas kreiranja,
