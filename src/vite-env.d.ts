@@ -11,6 +11,9 @@ interface ElectronAppConfig {
   progressBarColor: string;
   storageDir: string;
   playerChannel: 'A' | 'B' | 'C';
+  playerToken: string;
+  adminAutoplayEnabled: boolean;
+  adminAutoplayChannel: 'A' | 'B' | 'C';
 }
 
 interface Window {

@@ -21,6 +21,13 @@ import {
   removeDefaultImageAsync,
   isBackendUnavailableError,
   getNetworkInfoAsync,
+  getPlayerTokensAsync,
+  addPlayerTokenAsync,
+  removePlayerTokenAsync,
+  getAuthModeAsync,
+  setAuthModeAsync,
+  type AuthMode,
+  type PlayerTokenRecord,
   type NetworkInfo,
 } from '@/lib/content-service';
 import { toast } from 'sonner';
@@ -31,6 +38,10 @@ function toDateInputValue(iso: string): string {
 
 function formatDateSl(iso: string): string {
   return new Date(iso).toLocaleDateString('sl-SI');
+}
+
+function isLikelyHeic(file: File): boolean {
+  return /\.hei[cf]$/i.test(file.name);
 }
 
 const Dashboard = () => {
@@ -46,6 +57,11 @@ const Dashboard = () => {
   const [defaultImg, setDefaultImg] = useState<string | null>(null);
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const [storageDir, setStorageDir] = useState<string>('');
+  const [playerTokens, setPlayerTokens] = useState<PlayerTokenRecord[]>([]);
+  const [newPlayerToken, setNewPlayerToken] = useState('');
+  const [authMode, setAuthMode] = useState<AuthMode>('player-and-admin');
+  const [adminAutoplayEnabled, setAdminAutoplayEnabled] = useState(false);
+  const [adminAutoplayChannel, setAdminAutoplayChannel] = useState<'A' | 'B' | 'C'>('A');
   const [selectedChannel, setSelectedChannel] = useState<'A' | 'B' | 'C'>('A');
   const [previewIndexByChannel, setPreviewIndexByChannel] = useState<Record<'A' | 'B' | 'C', number>>({ A: 0, B: 0, C: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,9 +87,13 @@ const Dashboard = () => {
       try {
         setDefaultImg(await getDefaultImageAsync());
         setNetworkInfo(await getNetworkInfoAsync());
+        setPlayerTokens(await getPlayerTokensAsync());
+        setAuthMode(await getAuthModeAsync());
         if (window.electronApp) {
           const cfg = await window.electronApp.getConfig();
           setStorageDir(cfg.storageDir || '');
+          setAdminAutoplayEnabled(cfg.adminAutoplayEnabled === true);
+          setAdminAutoplayChannel(cfg.adminAutoplayChannel || 'A');
         }
       } catch (error) {
         if (!isBackendUnavailableError(error)) {
@@ -86,7 +106,7 @@ const Dashboard = () => {
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      const isImage = file.type.startsWith('image/');
+      const isImage = file.type.startsWith('image/') || isLikelyHeic(file);
       const isVideo = file.type.startsWith('video/');
       if (!isImage && !isVideo) {
         toast.error(`Nepodprta datoteka: ${file.name}`);
@@ -139,7 +159,7 @@ const Dashboard = () => {
   const handleDefaultImage = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    if (!file.type.startsWith('image/')) {
+    if (!(file.type.startsWith('image/') || isLikelyHeic(file))) {
       toast.error('Samo slike so dovoljene za privzeto sliko');
       return;
     }
@@ -164,6 +184,52 @@ const Dashboard = () => {
         toast.success('Privzeta slika odstranjena');
       })
       .catch(() => toast.error('Napaka pri odstranitvi privzete slike'));
+  };
+
+  const handleAddPlayerToken = async () => {
+    const token = newPlayerToken.trim();
+    if (!token) return;
+    try {
+      await addPlayerTokenAsync(token);
+      setNewPlayerToken('');
+      setPlayerTokens(await getPlayerTokensAsync());
+      toast.success('Player token dodan');
+    } catch {
+      toast.error('Napaka pri dodajanju player tokena');
+    }
+  };
+
+  const handleRemovePlayerToken = async (id: string) => {
+    try {
+      await removePlayerTokenAsync(id);
+      setPlayerTokens(await getPlayerTokensAsync());
+      toast.success('Player token odstranjen');
+    } catch {
+      toast.error('Napaka pri odstranjevanju player tokena');
+    }
+  };
+
+  const handleAuthModeChange = async (mode: AuthMode) => {
+    try {
+      const saved = await setAuthModeAsync(mode);
+      setAuthMode(saved);
+      toast.success('Način zaščite API je posodobljen');
+    } catch {
+      toast.error('Napaka pri shranjevanju načina zaščite');
+    }
+  };
+
+  const handleSaveAutoplay = async () => {
+    if (!window.electronApp) return;
+    try {
+      await window.electronApp.setConfig({
+        adminAutoplayEnabled,
+        adminAutoplayChannel,
+      });
+      toast.success('Nastavitve samodejnega predvajanja so shranjene');
+    } catch {
+      toast.error('Napaka pri shranjevanju autoplay nastavitev');
+    }
   };
 
   const isExpired = (endDate: string) => new Date(endDate) < new Date();
@@ -247,6 +313,83 @@ const Dashboard = () => {
         </Card>
 
         <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Sync player tokenov</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="space-y-2 rounded-md border p-3">
+              <Label>Način zaščite API</Label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={authMode}
+                onChange={e => handleAuthModeChange((e.target.value as AuthMode))}
+              >
+                <option value="player-and-admin">Token preverjanje za player API</option>
+                <option value="admin-only">Player API odprt (admin-only način)</option>
+              </select>
+            </div>
+            <p className="text-muted-foreground">
+              Na player napravi kopiraš token (gumb »Kopiraj«) in ga prilepiš sem. Dovoljeni playerji lahko potem berejo aktivne vsebine.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={newPlayerToken}
+                onChange={e => setNewPlayerToken(e.target.value)}
+                placeholder="Prilepi player token"
+              />
+              <Button type="button" onClick={handleAddPlayerToken}>Shrani</Button>
+            </div>
+            <div className="space-y-2">
+              {playerTokens.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Ni shranjenih tokenov (vsi playerji so trenutno dovoljeni).</p>
+              ) : playerTokens.map(token => (
+                <div key={token.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <code className="text-xs">{token.masked}</code>
+                  <Button variant="destructive" size="sm" onClick={() => handleRemovePlayerToken(token.id)}>
+                    Odstrani
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Samodejno predvajanje ob zagonu (Admin naprava)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <label className="flex items-center justify-between rounded-md border px-3 py-2">
+              <span>Po zagonu takoj odpri player</span>
+              <input
+                type="checkbox"
+                checked={adminAutoplayEnabled}
+                onChange={e => setAdminAutoplayEnabled(e.target.checked)}
+              />
+            </label>
+            <label className="flex items-center justify-between rounded-md border px-3 py-2">
+              <span>Kanal za autoplay</span>
+              <select
+                className="rounded border px-2 py-1 bg-background"
+                value={adminAutoplayChannel}
+                onChange={e => setAdminAutoplayChannel((e.target.value as 'A' | 'B' | 'C'))}
+              >
+                <option value="A">Kanal A</option>
+                <option value="B">Kanal B</option>
+                <option value="C">Kanal C</option>
+              </select>
+            </label>
+            {window.electronApp ? (
+              <Button type="button" onClick={handleSaveAutoplay}>Shrani autoplay</Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Nastavitev je na voljo v Electron aplikaciji.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
             <CardHeader>
               <CardTitle className="text-lg">Shranjevanje datotek</CardTitle>
             </CardHeader>
@@ -306,7 +449,7 @@ const Dashboard = () => {
               <input
                 ref={defaultImgInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 className="hidden"
                 onChange={e => handleDefaultImage(e.target.files)}
               />
@@ -393,7 +536,7 @@ const Dashboard = () => {
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*,video/*"
+            accept="image/*,video/*,.heic,.heif"
             className="hidden"
             onChange={e => handleFiles(e.target.files)}
           />

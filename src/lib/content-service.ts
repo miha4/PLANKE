@@ -45,6 +45,11 @@ function buildApiBaseCandidates() {
   ]);
 }
 
+function getOfflineFallbackApiBase(candidates: string[]) {
+  return candidates.find(candidate => candidate.includes(`:${CONTROL_PORT}/api`))
+    || `http://127.0.0.1:${CONTROL_PORT}/api`;
+}
+
 async function probeApiBase(apiBase: string): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -86,7 +91,7 @@ async function resolveApiBase(): Promise<string> {
         return candidate;
       }
     }
-    resolvedApiBaseCache = candidates[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
+    resolvedApiBaseCache = getOfflineFallbackApiBase(candidates);
     return resolvedApiBaseCache;
   })();
 
@@ -119,8 +124,22 @@ export interface NetworkInfo {
   healthPath: string;
 }
 
+export interface PlayerTokenRecord {
+  id: string;
+  masked: string;
+}
+
+export type AuthMode = 'player-and-admin' | 'admin-only';
+
+function getAuthHeaders(extraHeaders?: HeadersInit): HeadersInit {
+  const { playerToken } = getRuntimeConfig();
+  const authHeaders: Record<string, string> = {};
+  if (playerToken) authHeaders['X-Planke-Token'] = playerToken;
+  return { ...authHeaders, ...(extraHeaders || {}) };
+}
+
 function getResolvedBackendOrigin() {
-  const fallback = buildApiBaseCandidates()[0] || `http://127.0.0.1:${CONTROL_PORT}/api`;
+  const fallback = getOfflineFallbackApiBase(buildApiBaseCandidates());
   return new URL(resolvedApiBaseCache || fallback).origin;
 }
 
@@ -150,7 +169,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     const apiBase = await resolveApiBase();
     response = await fetch(`${apiBase}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json', ...(init?.headers || {}) }),
       ...init,
     });
   } catch {
@@ -180,6 +199,7 @@ export async function uploadMediaAsync(file: File): Promise<string> {
     response = await fetch(`${apiBase}/upload`, {
       method: 'POST',
       headers: {
+        ...getAuthHeaders(),
         'Content-Type': file.type || 'application/octet-stream',
         'X-File-Name': encodeURIComponent(file.name),
       },
@@ -221,4 +241,29 @@ export async function removeDefaultImageAsync(): Promise<void> {
 
 export async function getNetworkInfoAsync(): Promise<NetworkInfo> {
   return request<NetworkInfo>('/network-info');
+}
+
+export async function getPlayerTokensAsync(): Promise<PlayerTokenRecord[]> {
+  return request<PlayerTokenRecord[]>('/player-tokens');
+}
+
+export async function addPlayerTokenAsync(token: string): Promise<void> {
+  await request('/player-tokens', { method: 'POST', body: JSON.stringify({ token }) });
+}
+
+export async function removePlayerTokenAsync(id: string): Promise<void> {
+  await request(`/player-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function getAuthModeAsync(): Promise<AuthMode> {
+  const result = await request<{ mode: AuthMode }>('/auth-mode');
+  return result.mode === 'admin-only' ? 'admin-only' : 'player-and-admin';
+}
+
+export async function setAuthModeAsync(mode: AuthMode): Promise<AuthMode> {
+  const result = await request<{ mode: AuthMode }>('/auth-mode', {
+    method: 'PUT',
+    body: JSON.stringify({ mode }),
+  });
+  return result.mode === 'admin-only' ? 'admin-only' : 'player-and-admin';
 }

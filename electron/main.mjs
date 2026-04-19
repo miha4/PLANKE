@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,7 +30,14 @@ let appConfig = {
   progressBarColor: '#3b82f6',
   storageDir: '',
   playerChannel: 'A',
+  playerToken: '',
+  adminAutoplayEnabled: false,
+  adminAutoplayChannel: 'A',
 };
+
+function generatePlayerToken(length = 30) {
+  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+}
 
 function normalizeMode(value) {
   if (value === 'control') return 'admin';
@@ -49,6 +57,9 @@ function loadAppConfig() {
       progressBarColor: String(raw?.progressBarColor ?? '#3b82f6'),
       storageDir: String(raw?.storageDir ?? ''),
       playerChannel: raw?.playerChannel === 'B' || raw?.playerChannel === 'C' ? raw.playerChannel : 'A',
+      playerToken: String(raw?.playerToken ?? ''),
+      adminAutoplayEnabled: raw?.adminAutoplayEnabled === true,
+      adminAutoplayChannel: raw?.adminAutoplayChannel === 'B' || raw?.adminAutoplayChannel === 'C' ? raw.adminAutoplayChannel : 'A',
     };
   } catch {
     console.error('[electron] Failed to parse app config:', configPath);
@@ -183,6 +194,7 @@ function restartBackendIfNeeded() {
 }
 
 function getRouteForMode(targetMode) {
+  if (targetMode === 'admin' && appConfig.adminAutoplayEnabled) return '/player';
   if (targetMode === 'player') return '/player';
   if (targetMode === 'admin' || targetMode === 'control') return '/admin';
   return '/launcher';
@@ -191,7 +203,20 @@ function getRouteForMode(targetMode) {
 function buildRouteQuery(targetMode) {
   const query = { apiBase: `${resolvedControlUrl}/api` };
   if (targetMode === 'player') {
-    return { ...query, deviceId, channel: appConfig.playerChannel || 'A' };
+    return {
+      ...query,
+      deviceId,
+      channel: appConfig.playerChannel || 'A',
+      playerToken: appConfig.playerToken,
+    };
+  }
+  if (targetMode === 'admin' && appConfig.adminAutoplayEnabled) {
+    return {
+      ...query,
+      channel: appConfig.adminAutoplayChannel || 'A',
+      playerToken: appConfig.playerToken,
+      deviceId,
+    };
   }
   return query;
 }
@@ -270,6 +295,9 @@ app.whenReady().then(async () => {
   mkdirSync(configDir, { recursive: true });
   configPath = join(configDir, 'app-config.json');
   loadAppConfig();
+  if (!appConfig.playerToken) {
+    saveAppConfig({ playerToken: generatePlayerToken() });
+  }
   mode = envMode ? normalizeMode(envMode) : appConfig.startupMode;
 
   ipcMain.handle('app-config:get', () => ({
@@ -280,6 +308,7 @@ app.whenReady().then(async () => {
     preferredApiBase: appConfig.preferredApiBase,
     storageDir: appConfig.storageDir,
     playerChannel: appConfig.playerChannel,
+    playerToken: appConfig.playerToken,
   }));
 
   ipcMain.handle('app-config:set', (_event, nextConfig) => {
@@ -293,6 +322,9 @@ app.whenReady().then(async () => {
       progressBarColor: String(nextConfig?.progressBarColor ?? appConfig.progressBarColor ?? '#3b82f6'),
       storageDir: String(nextConfig?.storageDir ?? appConfig.storageDir ?? ''),
       playerChannel: nextConfig?.playerChannel === 'B' || nextConfig?.playerChannel === 'C' ? nextConfig.playerChannel : 'A',
+      playerToken: String(nextConfig?.playerToken ?? appConfig.playerToken ?? ''),
+      adminAutoplayEnabled: nextConfig?.adminAutoplayEnabled === true,
+      adminAutoplayChannel: nextConfig?.adminAutoplayChannel === 'B' || nextConfig?.adminAutoplayChannel === 'C' ? nextConfig.adminAutoplayChannel : 'A',
     });
     if (appConfig.storageDir !== previousStorageDir) {
       restartBackendIfNeeded();

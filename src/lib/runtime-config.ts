@@ -2,6 +2,7 @@ export interface RuntimeConfig {
   apiBase: string | null;
   deviceId: string | null;
   channelId: 'A' | 'B' | 'C' | null;
+  playerToken: string | null;
 }
 
 function normalizeApiBase(value: string | null): string | null {
@@ -25,11 +26,13 @@ export function getRuntimeConfig(location: Location = window.location): RuntimeC
   const apiBase = normalizeApiBase(searchParams.get('apiBase') || hashParams.get('apiBase'));
   const deviceId = searchParams.get('deviceId') || hashParams.get('deviceId');
   const channelRaw = searchParams.get('channel') || hashParams.get('channel');
+  const playerToken = searchParams.get('playerToken') || hashParams.get('playerToken');
   const channelId = channelRaw === 'A' || channelRaw === 'B' || channelRaw === 'C' ? channelRaw : null;
 
   return {
     apiBase,
     deviceId: deviceId?.trim() ? deviceId : null,
     channelId,
+    playerToken: playerToken?.trim() ? playerToken : null,
   };
 }
