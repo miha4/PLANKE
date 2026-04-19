@@ -21,6 +21,10 @@ import {
   removeDefaultImageAsync,
   isBackendUnavailableError,
   getNetworkInfoAsync,
+  getPlayerTokensAsync,
+  addPlayerTokenAsync,
+  removePlayerTokenAsync,
+  type PlayerTokenRecord,
   type NetworkInfo,
 } from '@/lib/content-service';
 import { toast } from 'sonner';
@@ -46,6 +50,8 @@ const Dashboard = () => {
   const [defaultImg, setDefaultImg] = useState<string | null>(null);
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const [storageDir, setStorageDir] = useState<string>('');
+  const [playerTokens, setPlayerTokens] = useState<PlayerTokenRecord[]>([]);
+  const [newPlayerToken, setNewPlayerToken] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<'A' | 'B' | 'C'>('A');
   const [previewIndexByChannel, setPreviewIndexByChannel] = useState<Record<'A' | 'B' | 'C', number>>({ A: 0, B: 0, C: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +77,7 @@ const Dashboard = () => {
       try {
         setDefaultImg(await getDefaultImageAsync());
         setNetworkInfo(await getNetworkInfoAsync());
+        setPlayerTokens(await getPlayerTokensAsync());
         if (window.electronApp) {
           const cfg = await window.electronApp.getConfig();
           setStorageDir(cfg.storageDir || '');
@@ -166,6 +173,29 @@ const Dashboard = () => {
       .catch(() => toast.error('Napaka pri odstranitvi privzete slike'));
   };
 
+  const handleAddPlayerToken = async () => {
+    const token = newPlayerToken.trim();
+    if (!token) return;
+    try {
+      await addPlayerTokenAsync(token);
+      setNewPlayerToken('');
+      setPlayerTokens(await getPlayerTokensAsync());
+      toast.success('Player token dodan');
+    } catch {
+      toast.error('Napaka pri dodajanju player tokena');
+    }
+  };
+
+  const handleRemovePlayerToken = async (id: string) => {
+    try {
+      await removePlayerTokenAsync(id);
+      setPlayerTokens(await getPlayerTokensAsync());
+      toast.success('Player token odstranjen');
+    } catch {
+      toast.error('Napaka pri odstranjevanju player tokena');
+    }
+  };
+
   const isExpired = (endDate: string) => new Date(endDate) < new Date();
   const isNotStarted = (startDate: string) => new Date(startDate) > new Date();
 
@@ -242,6 +272,37 @@ const Dashboard = () => {
               <div className="font-medium">Firewall priporočilo (odpri port, ne ugašaj firewall-a):</div>
               <div>Windows (PowerShell admin): <code>netsh advfirewall firewall add rule name=\"PLANKE-8787\" dir=in action=allow protocol=TCP localport=8787</code></div>
               <div>Linux (ufw): <code>sudo ufw allow 8787/tcp</code></div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Sync player tokenov</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Na player napravi kopiraš token (gumb »Kopiraj«) in ga prilepiš sem. Dovoljeni playerji lahko potem berejo aktivne vsebine.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={newPlayerToken}
+                onChange={e => setNewPlayerToken(e.target.value)}
+                placeholder="Prilepi player token"
+              />
+              <Button type="button" onClick={handleAddPlayerToken}>Shrani</Button>
+            </div>
+            <div className="space-y-2">
+              {playerTokens.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Ni shranjenih tokenov (vsi playerji so trenutno dovoljeni).</p>
+              ) : playerTokens.map(token => (
+                <div key={token.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <code className="text-xs">{token.masked}</code>
+                  <Button variant="destructive" size="sm" onClick={() => handleRemovePlayerToken(token.id)}>
+                    Odstrani
+                  </Button>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

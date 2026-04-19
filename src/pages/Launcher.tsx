@@ -41,23 +41,41 @@ const Launcher = () => {
   const [wizardPortTo, setWizardPortTo] = useState(8795);
   const [manualApiBaseInput, setManualApiBaseInput] = useState('');
   const [wizardSearching, setWizardSearching] = useState(false);
+  const [playerToken, setPlayerToken] = useState('');
   const manualApiBase = useMemo(() => getManualAdminApiBase(), []);
+
+  const getOrCreateBrowserPlayerToken = () => {
+    const existing = localStorage.getItem('player-token');
+    if (existing?.trim()) return existing;
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let token = '';
+    for (let i = 0; i < 30; i += 1) {
+      token += chars[Math.floor(Math.random() * chars.length)];
+    }
+    localStorage.setItem('player-token', token);
+    return token;
+  };
 
   useEffect(() => {
     setSelectedApiBase(manualApiBase);
-    window.electronApp?.getConfig().then(config => {
-      setPlayerFullscreen(config.playerFullscreen);
-      setProgressBarEnabled(config.progressBarEnabled !== false);
-      setProgressBarColor(config.progressBarColor || '#3b82f6');
-      setPlayerChannel(config.playerChannel || 'A');
-      if (config.startupMode === 'admin' || config.startupMode === 'player') {
-        setSelectedMode(config.startupMode);
-      }
-      if (config.preferredApiBase) {
-        setSelectedApiBase(config.preferredApiBase);
-        setManualApiBaseInput(config.preferredApiBase);
-      }
-    }).catch(() => {});
+    if (window.electronApp) {
+      window.electronApp.getConfig().then(config => {
+        setPlayerFullscreen(config.playerFullscreen);
+        setProgressBarEnabled(config.progressBarEnabled !== false);
+        setProgressBarColor(config.progressBarColor || '#3b82f6');
+        setPlayerChannel(config.playerChannel || 'A');
+        if (config.startupMode === 'admin' || config.startupMode === 'player') {
+          setSelectedMode(config.startupMode);
+        }
+        if (config.preferredApiBase) {
+          setSelectedApiBase(config.preferredApiBase);
+          setManualApiBaseInput(config.preferredApiBase);
+        }
+        setPlayerToken(config.playerToken || '');
+      }).catch(() => {});
+    } else {
+      setPlayerToken(getOrCreateBrowserPlayerToken());
+    }
   }, [manualApiBase]);
 
   const handleSearch = async () => {
@@ -158,13 +176,22 @@ const Launcher = () => {
         preferredApiBase: selectedApiBase || manualApiBase,
         progressBarEnabled,
         progressBarColor,
+        playerToken,
       });
       return;
     }
     localStorage.setItem('player-progress-enabled', progressBarEnabled ? '1' : '0');
     localStorage.setItem('player-progress-color', progressBarColor);
     localStorage.setItem('player-channel', playerChannel);
-    navigate(`/player?channel=${playerChannel}`);
+    localStorage.setItem('player-token', playerToken || getOrCreateBrowserPlayerToken());
+    const token = playerToken || getOrCreateBrowserPlayerToken();
+    navigate(`/player?channel=${playerChannel}&playerToken=${encodeURIComponent(token)}`);
+  };
+
+  const handleCopyPlayerToken = async () => {
+    if (!playerToken) return;
+    await navigator.clipboard.writeText(playerToken).catch(() => {});
+    toast.success('Token kopiran');
   };
 
   const proceedWithSelection = async () => {
@@ -263,6 +290,12 @@ const Launcher = () => {
                     <option value="C">Kanal C</option>
                   </select>
                 </label>
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                  <code className="flex-1 truncate text-xs">{playerToken || '—'}</code>
+                  <Button type="button" variant="outline" size="sm" onClick={handleCopyPlayerToken}>
+                    Kopiraj
+                  </Button>
+                </div>
                 <Button variant="outline" className="w-full gap-2" onClick={handleSearch} disabled={searching}>
                   <Search className="h-4 w-4" />
                   {searching ? 'Iščem admin app...' : 'Iskanje admin appa'}

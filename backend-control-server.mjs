@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'; // delo s potmi do map/datotek
 import { fileURLToPath } from 'node:url'; // pretvori import.meta.url v pravo datotecno pot
 import { DatabaseSync } from 'node:sqlite'; // SQLite baza
 import { networkInterfaces } from 'node:os';
+import { createHash } from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url); // polna pot do .js datoteke
 const __dirname = dirname(__filename); // mapa, kjer ta datoteka je
@@ -149,6 +150,42 @@ function writeSetting(key, value) {
     ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(key, JSON.stringify(value));
 }
 
+function normalizePlayerToken(token) {
+  return String(token ?? '').trim();
+}
+
+function hashPlayerToken(token) {
+  return createHash('sha256').update(normalizePlayerToken(token), 'utf8').digest('hex');
+}
+
+function readPlayerTokenHashes() {
+  const list = readSetting('playerTokenHashes', []);
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.filter(item => typeof item === 'string' && item.length > 0))];
+}
+
+function writePlayerTokenHashes(hashes) {
+  writeSetting('playerTokenHashes', [...new Set(hashes)]);
+}
+
+function getIncomingPlayerToken(req) {
+  const headerValue = req.get('x-planke-token');
+  if (headerValue?.trim()) return headerValue.trim();
+  if (typeof req.query.token === 'string' && req.query.token.trim()) return req.query.token.trim();
+  return '';
+}
+
+function requirePlayerToken(req, res, next) {
+  const allowedHashes = readPlayerTokenHashes();
+  if (allowedHashes.length === 0) return next();
+
+  const provided = getIncomingPlayerToken(req);
+  if (!provided) return res.status(401).json({ error: 'Player token is required' });
+  const providedHash = hashPlayerToken(provided);
+  if (!allowedHashes.includes(providedHash)) return res.status(403).json({ error: 'Invalid player token' });
+  return next();
+}
+
 //API ENDPOINTI
 
 //testni endpoint, da preverimo delovanje backenda
@@ -192,7 +229,7 @@ app.get('/api/content', (_req, res) => {
 });
 
 //endpoint, ki ga uporablja player: vrne samo aktivne vsebine
-app.get('/api/content/active', (_req, res) => {
+app.get('/api/content/active', requirePlayerToken, (_req, res) => {
   const now = nowIso();
   const channelId = _req.query.channel ? normalizeChannelId(_req.query.channel) : null;
   const rows = channelId
@@ -210,6 +247,39 @@ app.get('/api/content/active', (_req, res) => {
     createdAt: r.created_at,
     order: r.sort_order,
   })));
+});
+
+app.get('/api/player-tokens', (_req, res) => {
+  const hashes = readPlayerTokenHashes();
+  res.json(hashes.map(hash => ({
+    id: hash,
+    masked: `${hash.slice(0, 6)}...${hash.slice(-4)}`,
+  })));
+});
+
+app.post('/api/player-tokens', (req, res) => {
+  const token = normalizePlayerToken(req.body?.token);
+  if (token.length < 12) {
+    return res.status(400).json({ error: 'Token must be at least 12 characters long' });
+  }
+
+  const tokenHash = hashPlayerToken(token);
+  const hashes = readPlayerTokenHashes();
+  if (!hashes.includes(tokenHash)) {
+    hashes.push(tokenHash);
+    writePlayerTokenHashes(hashes);
+  }
+
+  return res.status(201).json({ ok: true, id: tokenHash });
+});
+
+app.delete('/api/player-tokens/:id', (req, res) => {
+  const tokenId = String(req.params.id ?? '').trim();
+  if (!tokenId) return res.status(400).json({ error: 'Token id is required' });
+
+  const filtered = readPlayerTokenHashes().filter(hash => hash !== tokenId);
+  writePlayerTokenHashes(filtered);
+  return res.status(204).end();
 });
 
 //endpoint ustvari nov content idem: prebere body, ustvari nov ID, zapiše čas kreiranja,
